@@ -88,11 +88,12 @@
 
 ## 7. GrokBot × Cursor
 
-- 正式Botは「統括チーフ V2」。古い統括は非表示で残す。
-- 核は Cursor 連動。GrokBotは判定、Cursor cloud agent が下書きと実装をする。
+- 正式Botは「統括チーフ V2」（入口の統括）。古い統括は非表示で残す。
+- 実行のメインチーフは Cursor cloud agent。下書き・実装・PRまで進める。原田が直接頼んでも同じ役割で動く。
+- GrokBotの入口統括は残す。廃止しない。
 - 起動先のテスト用リポジトリは `tama357/chatgpt-cursor`。
 - 応募・送信・本番公開はしない。断る案件では Cursor を起動しない。
-- 説明文の原本は `GROKBOT.md`。
+- 説明文の原本は `GROKBOT.md`。役割の詳細は `AGENTS.md`。
 
 ## 更新ルール
 
@@ -104,3 +105,4 @@
 
 - 2026-08-28：GitHub自動反映を設定した
 - 2026-08-28：統括チーフ V2 と Cursor cloud agent の連動を核にした
+- 2026-08-28：Cursor cloud agent を実行のメインチーフとして動けるようにした
