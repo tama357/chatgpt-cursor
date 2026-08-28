@@ -7,6 +7,7 @@
 1. `AGENTS.md` — AIへの最重要ルール
 2. `USER_CONTEXT.md` — 人物像、働き方、好み、利用環境
 3. `PROJECTS.md` — 進行中・継続中のプロジェクト
+4. `GROKBOT.md` — 統括チーフ V2 と Cursor 連動の説明文
 
 ## 更新方針
 
