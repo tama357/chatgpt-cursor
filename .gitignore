@@ -1,0 +1,20 @@
+# 秘密情報・認証
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+credentials.json
+secrets.json
+*secret*
+*password*
+*apikey*
+*api_key*
+
+# 依存関係
+node_modules/
+
+# OS / エディタ
+.DS_Store
+Thumbs.db
+*.swp
