@@ -1,13 +1,13 @@
 # ChatGPT → Cursor 引き継ぎリポジトリ
 
-このリポジトリは、原田真羽さんについてChatGPTが把握している作業情報をCursorへ引き継ぐための資料です。
+このリポジトリは、原田真羽さんについてChatGPTが把握している作業情報をCursorへ引き継ぐための資料です。入口の起動役は GrokBot、統括チーフは Cursor cloud agent です。
 
 ## 読む順番
 
 1. `AGENTS.md` — AIへの最重要ルール
 2. `USER_CONTEXT.md` — 人物像、働き方、好み、利用環境
 3. `PROJECTS.md` — 進行中・継続中のプロジェクト
-4. `GROKBOT.md` — 統括チーフ V2 と Cursor 連動の説明文
+4. `GROKBOT.md` — GrokBot（起動役）から Cursor（統括チーフ）への連動説明文
 
 ## 更新方針
 
