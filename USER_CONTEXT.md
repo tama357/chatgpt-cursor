@@ -1,6 +1,6 @@
 # ユーザーコンテキスト
 
-最終更新：2026年8月28日
+最終更新：2026年8月29日
 
 ## 基本プロフィール
 
@@ -47,7 +47,7 @@
 
 - ChatGPT Plus
 - Gemini（年間契約）
-- Cursor Pro
+- Cursor Pro+（月額60ドル）
 - Word / Excel / PowerPoint
 - Google Docs / Google Sheets / Google Drive / Google Calendar
 - Chatwork
