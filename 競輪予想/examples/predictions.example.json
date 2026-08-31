@@ -1,0 +1,45 @@
+{
+  "date": "2099-01-01",
+  "predictions": [
+    {
+      "number": 1,
+      "target": "鉄板",
+      "confidence": "A",
+      "venue": "テスト競輪場",
+      "race": 7,
+      "close_time": "18:20",
+      "tickets": [
+        {"type": "本線", "pick": "1-2-345"},
+        {"type": "抑え", "pick": "2-1-34"}
+      ],
+      "explanation": "テスト用の架空データです。実際の予想には使用しません。"
+    },
+    {
+      "number": 2,
+      "target": "鉄板",
+      "confidence": "B",
+      "venue": "テスト競輪場",
+      "race": 10,
+      "close_time": "19:30",
+      "tickets": [
+        {"type": "本線", "pick": "3-4-125"},
+        {"type": "抑え", "pick": "4-3-12"}
+      ],
+      "explanation": "テスト用の架空データです。実際の予想には使用しません。"
+    },
+    {
+      "number": 3,
+      "target": "中穴",
+      "confidence": "B",
+      "venue": "テスト競輪場",
+      "race": 12,
+      "close_time": "20:15",
+      "tickets": [
+        {"type": "本線", "pick": "5-6-123"},
+        {"type": "抑え", "pick": "6-5-12"}
+      ],
+      "explanation": "テスト用の架空データです。実際の予想には使用しません。"
+    }
+  ]
+}
+

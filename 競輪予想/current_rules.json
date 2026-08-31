@@ -1,0 +1,18 @@
+{
+  "version": "2026-08-31",
+  "timezone": "Asia/Tokyo",
+  "prediction_time": "06:00",
+  "result_time": "04:00",
+  "race_count": 3,
+  "minimum_close_time": "18:00",
+  "bet_type": "trifecta",
+  "max_combinations_per_race": 10,
+  "primary_target": "hit_rate",
+  "hit_rate_target": 0.5,
+  "return_rate_target": 1.0,
+  "prediction_spreadsheet_name": "原田さん｜予想記入シート",
+  "summary_spreadsheet_name": "原田さん｜予想集計シート",
+  "chatwork_room_id_env": "CHATWORK_ROOM_ID",
+  "chatwork_token_env": "CHATWORK_API_TOKEN",
+  "chatwork_send_requires_trigger": "今日の競輪予想を実行して"
+}

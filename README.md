@@ -5,10 +5,11 @@
 ## 読む順番
 
 1. `TODAY.md` — 今日やること、最優先タスク
-2. `PROJECTS.md` — 進行中・継続中のプロジェクト
-3. `USER_CONTEXT.md` — 人物像、働き方、好み、利用環境
-4. `AGENTS.md` — AIへの最重要ルール
-5. `GROKBOT.md` — 統括チーフ V2 と Cursor 連動の説明文
+2. `競輪予想/README.md` — ChatGPTで競輪予想・記入・送信・結果記載を実行する手順
+3. `PROJECTS.md` — 進行中・継続中のプロジェクト
+4. `USER_CONTEXT.md` — 人物像、働き方、好み、利用環境
+5. `AGENTS.md` — AIへの最重要ルール
+6. `GROKBOT.md` — 統括チーフ V2 と Cursor 連動の説明文
 
 ## 更新方針
 
