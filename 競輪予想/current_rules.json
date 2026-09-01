@@ -1,5 +1,5 @@
 {
-  "version": "2026-08-31",
+  "version": "2026-09-01",
   "timezone": "Asia/Tokyo",
   "prediction_time": "06:00",
   "result_time": "04:00",
@@ -10,6 +10,56 @@
   "primary_target": "hit_rate",
   "hit_rate_target": 0.5,
   "return_rate_target": 1.0,
+  "scoring_rubric": {
+    "score_name": "prediction_score",
+    "definition": "レース自体の予想しやすさ",
+    "initial_weights": {
+      "axis_reliability": 20,
+      "line_clarity": 15,
+      "ability_gap": 15,
+      "scenario_simplicity": 15,
+      "recent_form": 15,
+      "track_style_fit": 10,
+      "risk_absence": 10
+    },
+    "penalty_codes": [
+      "fragmented_race",
+      "evenly_matched",
+      "no_clear_axis",
+      "multiple_returnees",
+      "other"
+    ],
+    "low_quality_day_threshold": 70,
+    "selection_count": 3
+  },
+  "confidence": {
+    "definition": "作成した買い目への確信度",
+    "allowed_values": ["A", "B", "C"],
+    "independent_from": "prediction_score"
+  },
+  "learning": {
+    "auto_apply_recommended_weights": false,
+    "state_scope": "internal_only",
+    "forbidden_outputs": ["google_sheets", "chatwork"],
+    "miss_reasons": [
+      "axis_miss",
+      "second_place_miss",
+      "third_place_miss",
+      "line_collapse",
+      "unexpected_position",
+      "upset",
+      "accident",
+      "other"
+    ],
+    "report_dimensions": [
+      "prediction_score_band",
+      "low_quality_day",
+      "miss_reason",
+      "scoring_item_correlation",
+      "first_place_candidate_count",
+      "ticket_count"
+    ]
+  },
   "prediction_spreadsheet_name": "原田さん｜予想記入シート",
   "summary_spreadsheet_name": "原田さん｜予想集計シート",
   "chatwork_room_id_env": "CHATWORK_ROOM_ID",
