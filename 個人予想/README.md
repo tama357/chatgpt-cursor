@@ -42,9 +42,9 @@ PCがオフでも動きます。時刻は日本時間です。
 
 定期実行は GitHub Actions Variable `PERSONAL_PREDICT_ENABLED=true` のときだけ動きます。
 
-手動実行は GitHub の Actions 画面から `personal-predict` を選び、`verify-drive` / `results-yesterday` / `predict-today` を選べます。`verify-drive` はスイッチがオフでも使えます。
+手動の `verify-drive` と初期移行は、スイッチがオフでも使えます。4:00 / 6:00 は `true` のときだけ動きます。
 
-初期移行 `bootstrap-cloud` は、原田さんの許可があるときだけ実行します。Driveの古いExcelは取得しません。
+初期移行は **PC版 Cursor** から一度だけ行います。GitHub Actions の checkout には Windows ローカルの state が無いため、Actions 側の bootstrap は state なしでは失敗終了します。Driveの古いExcelは取得しません。
 
 最初の設定は `個人予想/DRIVE_SYNC.md` を見てください。秘密鍵は GitHub Secret にだけ置きます。
 

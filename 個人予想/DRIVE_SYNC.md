@@ -29,20 +29,33 @@
 
 - Secret名: `GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON`
 - リポジトリ・ログ・PR に JSON を書かない
-- ローカルに置く場合は `個人予想/.drive/service_account.json`（gitignore済み）
+- ローカル（PC版 Cursor）に置く場合は `個人予想/.drive/service_account.json`（gitignore済み）
 
-## 原田さんが最初に1回だけ行う設定
+`PERSONAL_PREDICT_ENABLED=false` でも、手動の `verify-drive` と `bootstrap-cloud` ではサービスアカウントを使えます。
 
-1. Google Cloud でプロジェクトを用意し、**Google Drive API を有効化**する
-2. サービスアカウントを作成し、JSON鍵をダウンロードする（中身は開かない・貼らない）
-3. ChatGPTフォルダを、サービスアカウントのメールアドレスに **編集者** で共有する
-4. GitHub の Settings → Secrets and variables → Actions に `GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON` を追加し、JSON全文を貼る
-5. リポジトリの Actions を有効化する
-6. GitHub の Settings → Secrets and variables → Actions → **Variables** に `PERSONAL_PREDICT_ENABLED` を作る。値は最初 `false` のままにする
-7. 最初は Actions の手動実行で **verify-drive** だけ走らせる（スイッチが false でも可。書き込みなし）
-8. 6ファイルの読み取り成功を確認する
-9. 原田さんが許可したあと、Cursor 側で初期移行 `bootstrap-cloud` を1回だけ行う（Driveの古いExcelは取得しない）
-10. 初期移行成功後、Variable を `true` にして 4:00 / 6:00 の定期実行を有効化する
+## 正しい実行順（最初の1回）
+
+1. サービスアカウントを作成し、ChatGPTフォルダを編集者で共有する
+2. GitHub Secret に `GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON` を設定する
+3. Variable `PERSONAL_PREDICT_ENABLED` を `false` にする
+4. PR #8 を main へマージする（定期実行は無効なので 4:00 / 6:00 は動かない）
+5. Actions で `verify-drive` を手動実行する（書き込みなし）
+6. 6ファイルの読み取り成功後、**PC版 Cursor** から現在の Excel・state・学習データを一度だけ初期移行する
+7. Drive上の9月2日Excelと state を確認する
+8. Variable を `true` にする
+9. 4:00・6:00 の定期実行を開始する
+
+初期移行は GitHub Actions では行いません。Actions の checkout には、Windows ローカルの Git管理外 state が無いためです。
+
+必要なローカルファイル（PC版 Cursor）:
+
+- `excel/` の最新6ファイル（mainに保存済みのもの）
+- `data/jra/state.json`
+- `data/nar/state.json`
+- `data/kyotei/state.json`
+- 各学習レポート（あれば送る）
+
+state が1つでも無い場合、初期移行は失敗終了します。成功扱いしません。
 
 ## クラウド実行の動き
 
@@ -54,10 +67,10 @@
 開始時に Drive から最新Excelと学習データを取得し、終了時に Excel・state・学習を Drive へ保存します。
 
 - 定期実行は `PERSONAL_PREDICT_ENABLED=true` のときだけ動く。未設定または false なら 4:00 / 6:00 は何もしない
-- `verify-drive` はスイッチがオフでも手動実行できる。1件でも読めなければ失敗終了する
+- `verify-drive` と `bootstrap-cloud` はスイッチがオフでも手動実行できる
+- `verify-drive` は1件でも読めなければ失敗終了する
 - Excel または学習データの保存が1件でも失敗したら失敗終了する
 - Excel は既存IDを更新するだけ。無い場合は作らず失敗にする
-- 学習JSONが未作成なら、初回だけ固定名で保存する（Excelは作らない）
 - 日々のExcel更新では PR を作らない
 - 同時実行は GitHub Actions の concurrency とファイルロックで防ぐ
 - 結果が一部だけ取れた日付は処理済みにしない。次回は未取得レースだけ再取得する

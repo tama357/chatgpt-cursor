@@ -39,6 +39,10 @@ class CloudActionsTest(ProductionDataGuardMixin, unittest.TestCase):
         self.assertIn("GITHUB_STEP_SUMMARY", text)
         self.assertIn("bootstrap-cloud", text)
         self.assertIn("migrate-sept2", text)
+        self.assertIn(
+            "steps.decide.outputs.job == 'verify-drive' || steps.decide.outputs.job == 'bootstrap-cloud'",
+            text,
+        )
 
     def test_today_str_uses_jst(self):
         from datetime import datetime
@@ -225,6 +229,40 @@ class CloudActionsTest(ProductionDataGuardMixin, unittest.TestCase):
                 run_bootstrap_cloud(ROOT, confirm=False)
             mock_pull.assert_not_called()
             mock_sync.assert_not_called()
+
+    def test_bootstrap_fails_without_local_state(self):
+        import shutil
+        import tempfile
+
+        from cloud_runner import CloudJobError, run_bootstrap_cloud
+
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp, True)
+        (tmp / "config").mkdir()
+        shutil.copy(ROOT / "config" / "drive_excel.json", tmp / "config" / "drive_excel.json")
+        (tmp / "excel").mkdir()
+        for name in (
+            "中央競馬_予想記入シート_2026年9月.xlsx",
+            "中央競馬_予想集計シート_2026年9月.xlsx",
+            "地方競馬_予想記入シート_2026年9月.xlsx",
+            "地方競馬_予想集計シート_2026年9月.xlsx",
+            "競艇_予想記入シート_2026年9月.xlsx",
+            "競艇_予想集計シート_2026年9月.xlsx",
+        ):
+            (tmp / "excel" / name).write_bytes(b"xlsx")
+
+        with (
+            patch.object(drive_sync, "pull_excel_files") as mock_pull,
+            patch.object(drive_sync, "sync_excel_files") as mock_sync,
+            patch.object(drive_sync, "push_learning_data") as mock_push,
+        ):
+            with self.assertRaises(CloudJobError) as ctx:
+                run_bootstrap_cloud(tmp, confirm=True)
+            self.assertIn("data/nar/state.json", str(ctx.exception))
+            self.assertIn("成功扱いにしません", str(ctx.exception))
+            mock_pull.assert_not_called()
+            mock_sync.assert_not_called()
+            mock_push.assert_not_called()
 
     def test_parse_official_result_html_jra_and_nar(self):
         jra_html = (

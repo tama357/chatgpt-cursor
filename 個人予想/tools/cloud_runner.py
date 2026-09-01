@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import fcntl
+import os
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Iterator
@@ -100,28 +101,55 @@ def run_verify_drive(base_dir: Path) -> str:
     return text
 
 
+REQUIRED_BOOTSTRAP_STATES = (
+    "data/jra/state.json",
+    "data/nar/state.json",
+    "data/kyotei/state.json",
+)
+
+
+def _missing_bootstrap_files(base_dir: Path) -> list[str]:
+    from excel.drive_sync import load_drive_config
+
+    missing: list[str] = []
+    config = load_drive_config(base_dir)
+    for spec in config.get("files", {}).values():
+        path = base_dir / "excel" / spec["local_name"]
+        if not path.exists():
+            missing.append(f"excel/{spec['local_name']}")
+    for rel in REQUIRED_BOOTSTRAP_STATES:
+        if not (base_dir / rel).exists():
+            missing.append(rel)
+    return missing
+
+
 def run_bootstrap_cloud(base_dir: Path, *, confirm: bool) -> str:
-    """9月2日のローカルExcelと学習データをDriveへ一度だけ送る。古いExcelは取得しない。"""
+    """PC版CursorのローカルExcel・state・学習をDriveへ一度だけ送る。古いExcelは取得しない。"""
     if not confirm:
         raise CloudJobError(
             "初期移行は原田さんの明示許可と --i-confirm-bootstrap が必要です。実行していません。"
         )
-    excel_dir = base_dir / "excel"
-    from excel.drive_sync import load_drive_config
-
-    config = load_drive_config(base_dir)
-    missing = []
-    for spec in config.get("files", {}).values():
-        path = excel_dir / spec["local_name"]
-        if not path.exists():
-            missing.append(spec["local_name"])
+    missing = _missing_bootstrap_files(base_dir)
     if missing:
-        raise CloudJobError("初期移行に必要なExcelがありません: " + ", ".join(missing))
+        hint = (
+            "GitHub Actions の checkout には、Windows ローカルの Git管理外 state がありません。"
+            " 初期移行は PC 版 Cursor から実行してください。"
+            if os.environ.get("GITHUB_ACTIONS") == "true"
+            else "PC版 Cursor の作業フォルダに、9月2日の state と Excel があるか確認してください。"
+        )
+        raise CloudJobError(
+            "初期移行に必要なファイルがありません: "
+            + ", ".join(missing)
+            + "\n"
+            + hint
+            + "\nstate なしでは成功扱いにしません。"
+        )
 
     lines = [
         "## 初期移行 bootstrap-cloud",
         "Driveから古いExcelは取得していません（9月2日の記録を消さないため）。",
         "既存6ファイルをID指定で上書きします。同名ファイルは新規作成しません。",
+        "この処理は PC 版 Cursor のローカル state を使います。",
     ]
     excel = sync_excel_files(base_dir)
     lines.append(excel.format_report())
@@ -138,6 +166,15 @@ def run_bootstrap_cloud(base_dir: Path, *, confirm: bool) -> str:
     )
     if excel.failed or data.failed:
         raise CloudJobError(text + "\n\n初期移行のDrive保存に失敗したため終了コード1で終了します。")
+    skipped_state = [
+        item.local_name
+        for item in data.results
+        if item.status == "skipped" and str(item.local_path).endswith("state.json")
+    ]
+    if skipped_state:
+        raise CloudJobError(
+            text + "\n\nstate が送れていません: " + ", ".join(skipped_state)
+        )
     return text
 
 

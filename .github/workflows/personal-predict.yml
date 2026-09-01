@@ -80,13 +80,14 @@ jobs:
           JOB: ${{ steps.decide.outputs.job }}
         run: |
           set -euo pipefail
-          if [ "$EVENT_NAME" = "schedule" ] && [ "${ENABLED}" != "true" ]; then
+          if [ "${ENABLED}" != "true" ]; then
             echo "enabled=false" >> "$GITHUB_OUTPUT"
             {
               echo "## 個人予想"
               echo "定期実行スイッチがオフのため、4:00 / 6:00 の処理は行いません。"
               echo "Variables の PERSONAL_PREDICT_ENABLED を true にすると有効になります。"
-              echo "verify-drive はスイッチがオフでも手動実行できます。"
+              echo "verify-drive と bootstrap-cloud はスイッチがオフでも手動実行できます。"
+              echo "初期移行の state は GitHub Actions では取得できません。PC版 Cursor から行います。"
             } >> "$GITHUB_STEP_SUMMARY"
             echo "定期実行スイッチがオフです（PERSONAL_PREDICT_ENABLED!=true）"
           else
@@ -94,7 +95,7 @@ jobs:
           fi
 
       - name: Place service account (never print)
-        if: steps.gate.outputs.enabled == 'true' || steps.decide.outputs.job == 'verify-drive'
+        if: steps.gate.outputs.enabled == 'true' || steps.decide.outputs.job == 'verify-drive' || steps.decide.outputs.job == 'bootstrap-cloud'
         env:
           GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON }}
         run: |

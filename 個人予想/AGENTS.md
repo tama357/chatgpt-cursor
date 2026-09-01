@@ -68,10 +68,12 @@ python3 個人予想/tools/workflow.py save-races kyotei /path/to/races.json --d
 
 - 認証はサービスアカウント。秘密鍵は GitHub Secret `GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON` のみ
 - 定期実行は Variable `PERSONAL_PREDICT_ENABLED=true` のときだけ
+- `verify-drive` と `bootstrap-cloud` はスイッチがオフでもサービスアカウントを使う
 - 既存6 Excel は ID指定で更新する。同名ファイルは新規作成しない
 - 開始時に Drive から Excel と学習データを取得し、終了時に保存する
 - 学習データは `data/jra`・`data/nar`・`data/kyotei` で分離する
 - 日々のExcel更新では PR を作らない
 - 最初の確認は `verify-drive`（読み取りのみ。失敗したら終了コード1）
-- 初期移行 `bootstrap-cloud` は原田さんの許可があるまで実行しない
+- 初期移行は PC版 Cursor から行う。GitHub Actions に state が無ければ失敗終了する
+- 初期移行は原田さんの許可があるまで実行しない
 - 詳細は `個人予想/DRIVE_SYNC.md`
