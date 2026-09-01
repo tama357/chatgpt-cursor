@@ -1,0 +1,166 @@
+{
+  "version": 1,
+  "days": [
+    {
+      "date": "2099-01-01",
+      "low_quality_day": false,
+      "candidates": [
+        {
+          "venue": "テスト競輪場A",
+          "race": 7,
+          "close_time": "18:20",
+          "prediction_score": 85,
+          "score_breakdown": {
+            "axis_reliability": 18,
+            "line_clarity": 13,
+            "ability_gap": 13,
+            "scenario_simplicity": 13,
+            "recent_form": 13,
+            "track_style_fit": 9,
+            "risk_absence": 8
+          },
+          "penalties": [{"code": "other", "points": 2}],
+          "selected": true,
+          "selection_rank": 1
+        },
+        {
+          "venue": "テスト競輪場B",
+          "race": 10,
+          "close_time": "19:30",
+          "prediction_score": 78,
+          "score_breakdown": {
+            "axis_reliability": 17,
+            "line_clarity": 12,
+            "ability_gap": 12,
+            "scenario_simplicity": 12,
+            "recent_form": 12,
+            "track_style_fit": 8,
+            "risk_absence": 8
+          },
+          "penalties": [{"code": "evenly_matched", "points": 3}],
+          "selected": true,
+          "selection_rank": 2
+        },
+        {
+          "venue": "テスト競輪場C",
+          "race": 12,
+          "close_time": "20:15",
+          "prediction_score": 72,
+          "score_breakdown": {
+            "axis_reliability": 16,
+            "line_clarity": 11,
+            "ability_gap": 11,
+            "scenario_simplicity": 11,
+            "recent_form": 11,
+            "track_style_fit": 8,
+            "risk_absence": 7
+          },
+          "penalties": [{"code": "fragmented_race", "points": 3}],
+          "selected": true,
+          "selection_rank": 3
+        },
+        {
+          "venue": "テスト競輪場D",
+          "race": 11,
+          "close_time": "20:00",
+          "prediction_score": 61,
+          "score_breakdown": {
+            "axis_reliability": 13,
+            "line_clarity": 10,
+            "ability_gap": 10,
+            "scenario_simplicity": 10,
+            "recent_form": 10,
+            "track_style_fit": 7,
+            "risk_absence": 6
+          },
+          "penalties": [{"code": "no_clear_axis", "points": 5}],
+          "selected": false,
+          "selection_rank": null
+        }
+      ],
+      "predictions": [
+        {
+          "number": 1,
+          "venue": "テスト競輪場A",
+          "race": 7,
+          "target": "鉄板",
+          "confidence": "A",
+          "prediction_score": 85,
+          "score_breakdown": {
+            "axis_reliability": 18,
+            "line_clarity": 13,
+            "ability_gap": 13,
+            "scenario_simplicity": 13,
+            "recent_form": 13,
+            "track_style_fit": 9,
+            "risk_absence": 8
+          },
+          "penalties": [{"code": "other", "points": 2}],
+          "first_place_candidate_count": 1,
+          "ticket_count": 5,
+          "result": {
+            "status": "的中",
+            "stake": 500,
+            "payout": 720,
+            "primary_miss_reason": null,
+            "secondary_miss_reasons": []
+          }
+        },
+        {
+          "number": 2,
+          "venue": "テスト競輪場B",
+          "race": 10,
+          "target": "鉄板",
+          "confidence": "B",
+          "prediction_score": 78,
+          "score_breakdown": {
+            "axis_reliability": 17,
+            "line_clarity": 12,
+            "ability_gap": 12,
+            "scenario_simplicity": 12,
+            "recent_form": 12,
+            "track_style_fit": 8,
+            "risk_absence": 8
+          },
+          "penalties": [{"code": "evenly_matched", "points": 3}],
+          "first_place_candidate_count": 2,
+          "ticket_count": 5,
+          "result": {
+            "status": "ハズレ",
+            "stake": 500,
+            "payout": 0,
+            "primary_miss_reason": "axis_miss",
+            "secondary_miss_reasons": ["line_collapse"]
+          }
+        },
+        {
+          "number": 3,
+          "venue": "テスト競輪場C",
+          "race": 12,
+          "target": "中穴",
+          "confidence": "B",
+          "prediction_score": 72,
+          "score_breakdown": {
+            "axis_reliability": 16,
+            "line_clarity": 11,
+            "ability_gap": 11,
+            "scenario_simplicity": 11,
+            "recent_form": 11,
+            "track_style_fit": 8,
+            "risk_absence": 7
+          },
+          "penalties": [{"code": "fragmented_race", "points": 3}],
+          "first_place_candidate_count": 1,
+          "ticket_count": 5,
+          "result": {
+            "status": "的中",
+            "stake": 500,
+            "payout": 1240,
+            "primary_miss_reason": null,
+            "secondary_miss_reasons": []
+          }
+        }
+      ]
+    }
+  ]
+}
