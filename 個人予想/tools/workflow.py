@@ -20,6 +20,7 @@ sys.path.insert(0, str(ROOT / "tools"))
 
 from common.aggregation import build_analysis  # noqa: E402
 from common.constants import (  # noqa: E402
+    DEFAULT_START_DATE,
     RULE_FILES,
     SPORT_EXCEL_KEYS,
     SPORT_LABELS,
@@ -35,11 +36,14 @@ from common.reporting import (  # noqa: E402
 from common.review import analyze_review  # noqa: E402
 from common.state import (  # noqa: E402
     find_day_records,
-    get_records,
+    init_personal_states,
+    is_before_start_date,
     is_processed,
     load_json,
     mark_processed,
+    records_since_start,
     save_json,
+    skip_before_start_message,
     upsert_record,
     validate_prediction_record,
     validate_result_record,
@@ -102,6 +106,8 @@ def run_predict(
         return UNSUPPORTED.format(sport=sport)
     rules = load_rules(sport)
     state = load_json(state_path(sport))
+    if is_before_start_date(state, target_date):
+        return skip_before_start_message(state, target_date, kind="predict")
     state["sport"] = rules["sport"]
     key = f"predict:{target_date}"
     payload = {"date": target_date, "sport": sport}
@@ -211,6 +217,8 @@ def run_results(sport: str, target_date: str, *, force: bool = False, sync_drive
         return UNSUPPORTED.format(sport=sport)
     rules = load_rules(sport)
     state = load_json(state_path(sport))
+    if is_before_start_date(state, target_date):
+        return skip_before_start_message(state, target_date, kind="results")
     key = f"results:{target_date}"
     payload = {"date": target_date, "sport": sport}
     label = SPORT_LABELS[sport]
@@ -312,7 +320,7 @@ def run_results(sport: str, target_date: str, *, force: bool = False, sync_drive
         sport_label=label,
         date=target_date,
         records=result_items,
-        all_records=get_records(state, with_result=True),
+        all_records=records_since_start(state, with_result=True),
         sheet_status=f"{sheet1}\n{sheet2}",
     )
     if pending:
@@ -357,6 +365,8 @@ def apply_results_from_file(
 ) -> str:
     """結果JSONをstateへ反映してから run_results を実行。"""
     state = load_json(state_path(sport))
+    if is_before_start_date(state, target_date):
+        return skip_before_start_message(state, target_date, kind="results")
     with results_file.open(encoding="utf-8") as handle:
         data = json.load(handle)
     _apply_result_rows(state, target_date, data.get("results", []))
@@ -367,7 +377,7 @@ def apply_results_from_file(
 def run_learning_report(sport: str) -> str:
     rules = load_rules(sport)
     state = load_json(state_path(sport))
-    records = get_records(state, with_result=True)
+    records = records_since_start(state, with_result=True)
     report = build_learning_report(records, rules)
     report_path = ROOT / "data" / sport / "learning_report.json"
     save_json(report_path, report)
@@ -442,6 +452,18 @@ def build_parser() -> argparse.ArgumentParser:
     ):
         sub.add_parser(name, parents=[common])
 
+    init_state = sub.add_parser("init-state")
+    init_state.add_argument(
+        "--start-date",
+        default=DEFAULT_START_DATE,
+        help=f"学習・結果の開始日 YYYY-MM-DD（省略時は {DEFAULT_START_DATE} JST）",
+    )
+    init_state.add_argument(
+        "--i-confirm-init-state",
+        action="store_true",
+        help="明示確認。このフラグが無いと初期化しない。",
+    )
+
     bootstrap = sub.add_parser("bootstrap-cloud", parents=[common])
     bootstrap.add_argument(
         "--i-confirm-bootstrap",
@@ -461,8 +483,17 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    target_date = args.date or jst_today_str()
     try:
+        if args.command == "init-state":
+            print(
+                init_personal_states(
+                    ROOT,
+                    start_date=args.start_date,
+                    confirm=bool(args.i_confirm_init_state),
+                )
+            )
+            return 0
+        target_date = args.date or jst_today_str()
         if args.command == "init-excel":
             print(init_excel_cmd())
         elif args.command == "sync-drive":

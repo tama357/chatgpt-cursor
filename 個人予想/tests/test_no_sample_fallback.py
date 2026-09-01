@@ -17,6 +17,7 @@ from test_fixtures import (  # noqa: E402
     TEST_DATE,
     ProductionDataGuardMixin,
     make_sandbox,
+    write_canonical_states,
     write_leftover_sample,
 )
 
@@ -42,6 +43,7 @@ class NoSampleFallbackTest(ProductionDataGuardMixin, unittest.TestCase):
         super().setUp()
         self.sandbox = make_sandbox(ROOT, copy_excel=True)
         self.addCleanup(shutil.rmtree, self.sandbox, True)
+        write_canonical_states(self.sandbox, start_date=TEST_DATE)
         self._orig_root = workflow.ROOT
         workflow.ROOT = self.sandbox
         self.addCleanup(setattr, workflow, "ROOT", self._orig_root)

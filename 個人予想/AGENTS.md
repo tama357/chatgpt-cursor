@@ -9,6 +9,18 @@
 
 JSON 作成、コマンド入力、Excel 操作は **すべて Cursor が実行**する。原田さんに技術作業をさせない。
 
+## 2026-09-03 からの開始
+
+予想・結果・集計・復習・学習の開始日は **2026-09-03（日本時間）** です。それより前の日付は結果取得にも学習にも使いません。9月2日のExcel記録はそのまま残します。
+
+初回だけ、確認フラグ付きの初期化コマンドで3競技の state を作ります。手作業で空JSONは作りません。既存 state があるときは上書きせず失敗します。
+
+```bash
+python3 個人予想/tools/workflow.py init-state --start-date 2026-09-03 --i-confirm-init-state
+```
+
+このコマンドは Excel・Drive・提出用 `競輪予想/` を変更しません。
+
 ## Cursor が自動で行うこと
 
 ### 予想（predict-today）
@@ -61,6 +73,7 @@ python3 個人予想/tools/workflow.py save-races kyotei /path/to/races.json --d
 ## 学習
 
 - 競技ごとに `data/{jra,nar,kyotei}/state.json` と `learning_report.json`
+- `start_date`（既定 2026-09-03 JST）より前の記録は学習しない
 - 100レース未満: 配点変更なし
 - `recommended_weights` は提案のみ
 

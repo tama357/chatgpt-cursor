@@ -7,6 +7,7 @@ from typing import Any
 
 from common.constants import EXCEL_FILENAMES, SPORT_LABELS, SPORTS
 from common.jst import today_str, yesterday_str
+from common.state import is_before_start_date, load_json, skip_before_start_message
 from fetch import jra as fetch_jra_mod
 from fetch import nar as fetch_nar_mod
 from fetch import kyotei as fetch_kyotei_mod
@@ -180,6 +181,10 @@ def run_predict_today(
     for sport in SPORTS:
         label = SPORT_LABELS[sport]
         lines.append(f"\n---\n\n## {label}\n")
+        state = load_json(base_dir / "data" / sport / "state.json")
+        if is_before_start_date(state, date):
+            lines.append(skip_before_start_message(state, date, kind="predict"))
+            continue
         races, status = ensure_race_data(base_dir, sport, date)
         lines.append(status)
         if not races:
@@ -215,6 +220,9 @@ def run_results_yesterday(
         label = SPORT_LABELS[sport]
         lines.append(f"\n## {label}\n")
         state = load_state_fn(sport)
+        if is_before_start_date(state, date):
+            lines.append(skip_before_start_message(state, date, kind="results"))
+            continue
         day_records = find_day_records_fn(state, date)
         if not day_records:
             lines.append(f"{date} の{label}予想記録がありません。")

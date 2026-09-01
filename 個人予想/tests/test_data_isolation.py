@@ -18,6 +18,7 @@ from test_fixtures import (  # noqa: E402
     make_sandbox,
     seed_dummy_runtime,
     snapshot_tree,
+    write_canonical_states,
 )
 
 ROOT = PRODUCTION_ROOT
@@ -47,6 +48,10 @@ class DataIsolationTest(ProductionDataGuardMixin, unittest.TestCase):
     def test_seed_dummy_rejects_production_data(self):
         with self.assertRaises(RuntimeError):
             seed_dummy_runtime(PRODUCTION_ROOT)
+
+    def test_write_canonical_states_rejects_production_data(self):
+        with self.assertRaises(RuntimeError):
+            write_canonical_states(PRODUCTION_ROOT, start_date="2026-09-03")
 
     def test_dummy_runtime_files_survive_predict_flow(self):
         """別ルートのダミー state / 学習 / レース結果は、テスト実行後もハッシュが一致する。"""

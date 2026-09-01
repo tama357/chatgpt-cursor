@@ -26,6 +26,10 @@ ALLOWED_TICKET_TYPES = frozenset({"本線", "抑え"})
 
 # 個人予想の正式3区分。keiba（統合）と keirin は未使用。
 SPORTS = ("jra", "nar", "kyotei")
+STATE_VERSION = 2
+STATE_TIMEZONE = "Asia/Tokyo"
+# 予想・結果・集計・復習・学習の開始日（JST）。これより前は対象外。
+DEFAULT_START_DATE = "2026-09-03"
 SPORT_LABELS = {
     "jra": "中央競馬",
     "nar": "地方競馬",

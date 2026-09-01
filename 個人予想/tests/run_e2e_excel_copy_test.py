@@ -21,6 +21,7 @@ from test_fixtures import (  # noqa: E402
     make_sandbox,
     seed_dummy_runtime,
     snapshot_tree,
+    write_canonical_states,
 )
 
 SHEET = "202609"
@@ -119,6 +120,7 @@ def main() -> int:
     frozen_report_before = frozen_report.read_bytes() if frozen_report.exists() else None
     original_hashes = {k: file_hash(p) for k, p in ORIGINALS.items()}
     sandbox = make_sandbox(ROOT, copy_excel=True)
+    write_canonical_states(sandbox, start_date=TEST_DATE)
     verify = Path(tempfile.mkdtemp(prefix="personal-e2e-verify-"))
     seed_dummy_runtime(verify)
     verify_before = snapshot_tree(verify)
@@ -226,7 +228,7 @@ def main() -> int:
         if not unchanged:
             failed.append("originals modified")
 
-        src = (ROOT / "tools" / "workflow.py").read_text()
+        src = (ROOT / "tools" / "workflow.py").read_text(encoding="utf-8")
         chatwork = "send_chatwork" in src or "chatwork_request" in src
         report["checks"].append({"step": "chatwork", "workflow_calls_chatwork": chatwork})
         if chatwork:

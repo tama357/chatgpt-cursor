@@ -43,6 +43,15 @@ class CloudActionsTest(ProductionDataGuardMixin, unittest.TestCase):
             "steps.decide.outputs.job == 'verify-drive' || steps.decide.outputs.job == 'bootstrap-cloud'",
             text,
         )
+        self.assertIn(
+            "steps.gate.outputs.enabled == 'true' && steps.decide.outputs.job == 'results-yesterday'",
+            text,
+        )
+        self.assertIn(
+            "steps.gate.outputs.enabled == 'true' && steps.decide.outputs.job == 'predict-today'",
+            text,
+        )
+        self.assertNotIn("init-state", text)
 
     def test_today_str_uses_jst(self):
         from datetime import datetime
@@ -162,6 +171,7 @@ class CloudActionsTest(ProductionDataGuardMixin, unittest.TestCase):
             self.assertIn("新規作成", report.results[0].message)
             mock_create.assert_not_called()
 
+    @unittest.skipUnless(sys.platform != "win32", "fcntl lock is Unix")
     def test_lock_prevents_concurrent(self):
         import tempfile
         import shutil
