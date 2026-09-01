@@ -1,0 +1,115 @@
+# 個人予想の毎日自動実行（提出用 競輪予想/ と Chatwork には触れない）
+# cron は UTC。日本時間は通年 UTC+9（サマータイムなし）。
+#   19:00 UTC = 翌 04:00 JST（前日結果）
+#   21:00 UTC = 翌 06:00 JST（当日予想）
+name: personal-predict
+
+on:
+  schedule:
+    - cron: "0 19 * * *"
+    - cron: "0 21 * * *"
+  workflow_dispatch:
+    inputs:
+      job:
+        description: "実行内容"
+        type: choice
+        required: true
+        default: verify-drive
+        options:
+          - verify-drive
+          - results-yesterday
+          - predict-today
+      date:
+        description: "対象日 YYYY-MM-DD（空なら日本時間の今日／昨日）"
+        required: false
+        type: string
+
+concurrency:
+  group: personal-predict-cloud
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  pull-requests: none
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r 個人予想/requirements.txt
+
+      - name: Decide job
+        id: decide
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          SCHEDULE: ${{ github.event.schedule }}
+          INPUT_JOB: ${{ inputs.job }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            echo "job=${INPUT_JOB}" >> "$GITHUB_OUTPUT"
+          elif [ "$SCHEDULE" = "0 19 * * *" ]; then
+            echo "job=results-yesterday" >> "$GITHUB_OUTPUT"
+          else
+            echo "job=predict-today" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Place service account (never print)
+        env:
+          GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON }}
+        run: |
+          set -euo pipefail
+          if [ -z "${GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON:-}" ]; then
+            echo "Secret GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON が未設定です"
+            exit 1
+          fi
+          umask 077
+          mkdir -p 個人予想/.drive
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          raw = os.environ["GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON"]
+          path = Path("個人予想/.drive/service_account.json")
+          path.write_text(raw, encoding="utf-8")
+          print("service_account.json placed (bytes hidden)")
+          PY
+
+      - name: Verify Drive (read only)
+        if: steps.decide.outputs.job == 'verify-drive'
+        run: python3 個人予想/tools/workflow.py verify-drive
+
+      - name: Cloud results (JST 4:00)
+        if: steps.decide.outputs.job == 'results-yesterday'
+        env:
+          TARGET_DATE: ${{ inputs.date }}
+        run: |
+          set -euo pipefail
+          if [ -n "${TARGET_DATE:-}" ]; then
+            python3 個人予想/tools/workflow.py cloud-results --date "$TARGET_DATE"
+          else
+            python3 個人予想/tools/workflow.py cloud-results
+          fi
+
+      - name: Cloud predict (JST 6:00)
+        if: steps.decide.outputs.job == 'predict-today'
+        env:
+          TARGET_DATE: ${{ inputs.date }}
+        run: |
+          set -euo pipefail
+          if [ -n "${TARGET_DATE:-}" ]; then
+            python3 個人予想/tools/workflow.py cloud-predict --date "$TARGET_DATE"
+          else
+            python3 個人予想/tools/workflow.py cloud-predict
+          fi

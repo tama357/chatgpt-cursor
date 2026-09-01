@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib.util
 import inspect
+import json
 import shutil
 import sys
 import unittest
@@ -71,7 +72,9 @@ class NoSampleFallbackTest(ProductionDataGuardMixin, unittest.TestCase):
 
     def test_jra_2026_09_01_no_meeting_production_zero(self):
         """本番モード: 2026-09-01 は JRA非開催。サンプルの中山・阪神・新潟を使わない。"""
-        with patch.object(fetch_jra, "auto_fetch", return_value=[]):
+        with patch.object(
+            fetch_jra, "auto_outcome", return_value={"races": [], "status": "no_meeting"}
+        ):
             races = fetch_jra.fetch_races(
                 self.sandbox, TEST_DATE, allow_sample=False, try_auto=True
             )
@@ -88,7 +91,9 @@ class NoSampleFallbackTest(ProductionDataGuardMixin, unittest.TestCase):
         self.assertEqual(selected, [])
 
     def test_examples_only_when_allow_sample_true(self):
-        with patch.object(fetch_jra, "auto_fetch", return_value=[]):
+        with patch.object(
+            fetch_jra, "auto_outcome", return_value={"races": [], "status": "no_meeting"}
+        ):
             denied = fetch_jra.fetch_races(
                 self.sandbox, TEST_DATE, allow_sample=False, try_auto=True
             )
@@ -100,14 +105,22 @@ class NoSampleFallbackTest(ProductionDataGuardMixin, unittest.TestCase):
         self.assertTrue(any(r.get("venue") == "中山" for r in allowed))
 
     def test_nar_kyotei_fetch_failure_does_not_use_sample(self):
-        with patch.object(fetch_nar, "auto_fetch", return_value=[]):
+        with patch.object(
+            fetch_nar,
+            "auto_outcome",
+            return_value={"races": [], "status": "fetch_failed", "error": "fail"},
+        ):
             nar_races = fetch_nar.fetch_races(
                 self.sandbox, TEST_DATE, allow_sample=False, try_auto=True
             )
             nar_report = workflow.run_predict(
                 "nar", TEST_DATE, force=True, sync_drive=False
             )
-        with patch.object(fetch_kyotei, "auto_fetch", return_value=[]):
+        with patch.object(
+            fetch_kyotei,
+            "auto_outcome",
+            return_value={"races": [], "status": "fetch_failed", "error": "fail"},
+        ):
             kyotei_races = fetch_kyotei.fetch_races(
                 self.sandbox, TEST_DATE, allow_sample=False, try_auto=True
             )
@@ -125,7 +138,9 @@ class NoSampleFallbackTest(ProductionDataGuardMixin, unittest.TestCase):
         dest = write_leftover_sample(self.sandbox, "jra", "sample", "中山")
         loaded = load_race_data(self.sandbox, "jra", TEST_DATE, allow_sample=False)
         self.assertEqual(loaded, [])
-        with patch.object(fetch_jra, "auto_fetch", return_value=[]):
+        with patch.object(
+            fetch_jra, "auto_outcome", return_value={"races": [], "status": "no_meeting"}
+        ):
             races = fetch_jra.fetch_races(self.sandbox, TEST_DATE, allow_sample=False)
         self.assertEqual(races, [])
         self.assertTrue(dest.exists())
@@ -135,7 +150,9 @@ class NoSampleFallbackTest(ProductionDataGuardMixin, unittest.TestCase):
         dest = write_leftover_sample(self.sandbox, "jra", "test_fixture", "中山")
         loaded = load_race_data(self.sandbox, "jra", TEST_DATE, allow_sample=False)
         self.assertEqual(loaded, [])
-        with patch.object(fetch_jra, "auto_fetch", return_value=[]):
+        with patch.object(
+            fetch_jra, "auto_outcome", return_value={"races": [], "status": "no_meeting"}
+        ):
             races = fetch_jra.fetch_races(
                 self.sandbox, TEST_DATE, allow_sample=False, try_auto=True
             )
@@ -152,20 +169,20 @@ class NoSampleFallbackTest(ProductionDataGuardMixin, unittest.TestCase):
 
         def fake_jra(_base, _date, *, allow_sample=True, try_auto=True):
             recorded.append(("jra", allow_sample))
-            return []
+            return {"races": [], "status": "no_meeting"}
 
         def fake_nar(_base, _date, *, allow_sample=True, try_auto=True):
             recorded.append(("nar", allow_sample))
-            return []
+            return {"races": [], "status": "fetch_failed"}
 
         def fake_kyotei(_base, _date, *, allow_sample=True, try_auto=True):
             recorded.append(("kyotei", allow_sample))
-            return []
+            return {"races": [], "status": "fetch_failed"}
 
         with (
-            patch.object(workflow.fetch_jra, "fetch_races", fake_jra),
-            patch.object(workflow.fetch_nar, "fetch_races", fake_nar),
-            patch.object(workflow.fetch_kyotei, "fetch_races", fake_kyotei),
+            patch.object(workflow.fetch_jra, "fetch_races_outcome", fake_jra),
+            patch.object(workflow.fetch_nar, "fetch_races_outcome", fake_nar),
+            patch.object(workflow.fetch_kyotei, "fetch_races_outcome", fake_kyotei),
         ):
             workflow.main(["predict-jra", "--date", TEST_DATE, "--force"])
             workflow.main(["predict-nar", "--date", TEST_DATE, "--force"])
@@ -188,9 +205,19 @@ class NoSampleFallbackTest(ProductionDataGuardMixin, unittest.TestCase):
             dest = write_leftover_sample(self.sandbox, sport, "test_fixture", venue)
             self.assertTrue(dest.exists())
         with (
-            patch.object(fetch_jra, "auto_fetch", return_value=[]),
-            patch.object(fetch_nar, "auto_fetch", return_value=[]),
-            patch.object(fetch_kyotei, "auto_fetch", return_value=[]),
+            patch.object(
+                fetch_jra, "auto_outcome", return_value={"races": [], "status": "no_meeting"}
+            ),
+            patch.object(
+                fetch_nar,
+                "auto_outcome",
+                return_value={"races": [], "status": "fetch_failed", "error": "fail"},
+            ),
+            patch.object(
+                fetch_kyotei,
+                "auto_outcome",
+                return_value={"races": [], "status": "fetch_failed", "error": "fail"},
+            ),
         ):
             report = run_predict_today(
                 self.sandbox,
@@ -208,6 +235,46 @@ class NoSampleFallbackTest(ProductionDataGuardMixin, unittest.TestCase):
         for sport in ("jra", "nar", "kyotei"):
             leftover = self.sandbox / "data" / "races" / sport / f"{TEST_DATE}.json"
             self.assertTrue(leftover.exists())
+
+    def test_leftover_sample_results_are_not_used(self):
+        from orchestrator import ensure_result_data
+
+        leftover = self.sandbox / "data" / "results" / "nar" / f"{TEST_DATE}.json"
+        leftover.parent.mkdir(parents=True, exist_ok=True)
+        leftover.write_text(
+            json.dumps(
+                {
+                    "date": TEST_DATE,
+                    "source": "test_fixture",
+                    "results": [
+                        {
+                            "venue": "大井",
+                            "race": 10,
+                            "trifecta": "1-2-3",
+                            "payout": 1000,
+                        }
+                    ],
+                },
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+        pending = [
+            {
+                "venue": "大井",
+                "race": 10,
+                "tickets": ["1-2-3"],
+                "fetched_data": {"source": "nar.netkeiba", "race_id": "202637090110"},
+            }
+        ]
+        with patch(
+            "orchestrator.fetch_keiba_results",
+            return_value=[],
+        ):
+            results, status = ensure_result_data(self.sandbox, "nar", TEST_DATE, pending)
+        self.assertEqual(results, [])
+        self.assertIn("取得失敗", status)
+        self.assertNotIn("結果JSONあり", status)
 
 
 if __name__ == "__main__":

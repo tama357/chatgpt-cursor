@@ -38,5 +38,31 @@
       "drive_file_id": "1YCv2VU01kMiwN2RzV4PUpCvfdBhIIJvy",
       "drive_title": "競艇_予想集計シート_2026年9月.xlsx"
     }
+  },
+  "data_files": {
+    "jra_state": {
+      "drive_name": "jra_state.json",
+      "local_path": "data/jra/state.json"
+    },
+    "jra_learning": {
+      "drive_name": "jra_learning_report.json",
+      "local_path": "data/jra/learning_report.json"
+    },
+    "nar_state": {
+      "drive_name": "nar_state.json",
+      "local_path": "data/nar/state.json"
+    },
+    "nar_learning": {
+      "drive_name": "nar_learning_report.json",
+      "local_path": "data/nar/learning_report.json"
+    },
+    "kyotei_state": {
+      "drive_name": "kyotei_state.json",
+      "local_path": "data/kyotei/state.json"
+    },
+    "kyotei_learning": {
+      "drive_name": "kyotei_learning_report.json",
+      "local_path": "data/kyotei/learning_report.json"
+    }
   }
 }

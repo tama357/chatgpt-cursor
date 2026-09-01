@@ -49,7 +49,11 @@ class OrchestratorTest(ProductionDataGuardMixin, unittest.TestCase):
             sample = fetch_mod.fetch_races(
                 self.sandbox, TEST_DATE, allow_sample=True, try_auto=False
             )
-            with patch.object(fetch_mod, "auto_fetch", return_value=sample):
+            with patch.object(
+                fetch_mod,
+                "auto_outcome",
+                return_value={"races": sample, "status": "ok"},
+            ):
                 races, status = ensure_race_data(self.sandbox, sport, TEST_DATE)
             self.assertGreaterEqual(len(races), 1)
             self.assertIn("✅", status)
@@ -63,9 +67,17 @@ class OrchestratorTest(ProductionDataGuardMixin, unittest.TestCase):
             for sport, _needle, fetch_mod in FETCH_MODS
         }
         with (
-            patch.object(fetch_jra, "auto_fetch", return_value=samples["jra"]),
-            patch.object(fetch_nar, "auto_fetch", return_value=samples["nar"]),
-            patch.object(fetch_kyotei, "auto_fetch", return_value=samples["kyotei"]),
+            patch.object(
+                fetch_jra, "auto_outcome", return_value={"races": samples["jra"], "status": "ok"}
+            ),
+            patch.object(
+                fetch_nar, "auto_outcome", return_value={"races": samples["nar"], "status": "ok"}
+            ),
+            patch.object(
+                fetch_kyotei,
+                "auto_outcome",
+                return_value={"races": samples["kyotei"], "status": "ok"},
+            ),
         ):
             report = run_predict_today(
                 self.sandbox,

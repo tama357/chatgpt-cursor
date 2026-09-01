@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import json
-from datetime import date
+import re
 from pathlib import Path
 from typing import Any
+
+from common.jst import today_str as jst_today_str
 
 SAMPLE_SOURCES = frozenset(
     {
@@ -73,4 +75,26 @@ def _races_from_payload(data: Any, target_date: str) -> list[dict[str, Any]]:
 
 
 def today_str() -> str:
-    return date.today().isoformat()
+    return jst_today_str()
+
+
+def is_dummy_entry_name(name: Any) -> bool:
+    text = str(name or "").strip()
+    if re.fullmatch(r"馬\d+", text):
+        return True
+    if re.fullmatch(r"\d+号艇", text):
+        return True
+    return False
+
+
+def reject_dummy_races(races: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """本番用。ダミー馬名／号艇名だけのレースは公式情報とみなさない。"""
+    kept: list[dict[str, Any]] = []
+    for race in races:
+        entries = race.get("entries") or []
+        if not entries:
+            continue
+        if any(is_dummy_entry_name(e.get("name")) for e in entries):
+            continue
+        kept.append(race)
+    return kept

@@ -2,33 +2,30 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
-from zoneinfo import ZoneInfo
 
 from common.constants import EXCEL_FILENAMES, SPORT_LABELS, SPORTS
+from common.jst import today_str, yesterday_str
 from fetch import jra as fetch_jra_mod
 from fetch import nar as fetch_nar_mod
 from fetch import kyotei as fetch_kyotei_mod
 from fetch.kyotei_auto import fetch_results_for_predictions
-from fetch.netkeiba import fetch_result_trifecta
+from fetch.netkeiba import fetch_results_for_predictions as fetch_keiba_results
+from fetch.base import is_sample_payload
 from fetch.race_builder import (
+    is_official_result_file,
+    load_official_results,
+    load_results_payload,
     result_data_path,
     race_data_path,
     save_results_json,
     save_races_json,
 )
-from fetch.base import today_str
 
 from excel.drive_sync import DriveAuthError, sync_excel_files  # noqa: E402
 
 FETCHERS = {"jra": fetch_jra_mod, "nar": fetch_nar_mod, "kyotei": fetch_kyotei_mod}
-
-
-def _yesterday_str() -> str:
-    tz = ZoneInfo("Asia/Tokyo")
-    return (datetime.now(tz).date() - timedelta(days=1)).isoformat()
 
 
 def _header(title: str, target_date: str) -> str:
@@ -40,7 +37,14 @@ def ensure_race_data(base_dir: Path, sport: str, target_date: str) -> tuple[list
     if sport not in FETCHERS:
         return [], f"⚠ 未対応の競技です: {sport}"
     fetcher = FETCHERS[sport]
-    races = fetcher.fetch_races(base_dir, target_date, allow_sample=False, try_auto=True)
+    outcome_fn = getattr(fetcher, "fetch_races_outcome", None)
+    if outcome_fn:
+        outcome = outcome_fn(base_dir, target_date, allow_sample=False, try_auto=True)
+        races = list(outcome.get("races") or [])
+        status_code = outcome.get("status") or ("ok" if races else "fetch_failed")
+    else:
+        races = fetcher.fetch_races(base_dir, target_date, allow_sample=False, try_auto=True)
+        status_code = "ok" if races else "fetch_failed"
     label = SPORT_LABELS[sport]
 
     if races:
@@ -49,15 +53,16 @@ def ensure_race_data(base_dir: Path, sport: str, target_date: str) -> tuple[list
             save_races_json(base_dir, sport, target_date, races, source=str(source))
         return races, f"✅ {label}: {len(races)}レース分の出走情報を確認（{path.name}）"
 
-    if sport == "jra":
+    if sport == "jra" and status_code != "fetch_failed":
         return [], (
             f"【開催なし】{target_date} は中央競馬（JRA）の開催日ではありません。"
             "開催日のみ予想します。"
         )
+    if status_code == "no_meeting":
+        return [], f"【開催なし】{target_date} の{label}は公式一覧上で開催がありません。"
     return [], (
-        f"⚠ {label}: 自動取得に失敗しました。サンプルデータは使いません。\n"
-        f"  CursorがWebで出走情報を調査し、`data/races/{sport}/{target_date}.json` を作成します。\n"
-        f"  原田さんの手作業は不要です。"
+        f"【取得失敗】{label}の出走情報を取得できませんでした。サンプルデータは使いません。"
+        " この競技の予想は中止します。"
     )
 
 
@@ -68,8 +73,14 @@ def ensure_result_data(
     day_records: list[dict[str, Any]],
 ) -> tuple[list[dict[str, Any]], str]:
     path = result_data_path(base_dir, sport, target_date)
+    if is_official_result_file(path):
+        results = load_official_results(path)
+        return results, f"✅ {SPORT_LABELS.get(sport, sport)}: 結果JSONあり（{path.name}）"
     if path.exists():
-        return [], f"✅ {SPORT_LABELS.get(sport, sport)}: 結果JSONあり（{path.name}）"
+        leftover = load_results_payload(path)
+        if is_sample_payload(leftover, path):
+            # 残っていても本番では使わない。公式取得へ進む。
+            pass
 
     pending = [
         r
@@ -82,31 +93,15 @@ def ensure_result_data(
     if sport == "kyotei":
         results = fetch_results_for_predictions(pending)
     elif sport in {"jra", "nar"}:
-        results = []
         circuit = "nar" if sport == "nar" else "jra"
-        for record in pending:
-            race_id = (record.get("fetched_data") or {}).get("race_id")
-            if not race_id:
-                continue
-            parsed = fetch_result_trifecta(str(race_id), circuit=circuit)
-            if not parsed:
-                continue
-            results.append(
-                {
-                    "venue": record.get("venue"),
-                    "race": record.get("race"),
-                    "trifecta": parsed["trifecta"],
-                    "payout": parsed.get("payout", 0),
-                    "scenario_realized": None,
-                }
-            )
+        results = fetch_keiba_results(pending, circuit)
     else:
         results = []
 
     if not results:
         return [], (
-            f"⚠ {SPORT_LABELS.get(sport, sport)}: 結果を自動取得できませんでした。\n"
-            f"  CursorがWebで正式結果を確認し、`data/results/{sport}/{target_date}.json` を作成します。"
+            f"【取得失敗】{SPORT_LABELS.get(sport, sport)}の正式結果を取得できませんでした。"
+            " 推測では記入しません。この競技の結果処理は中止します。"
         )
 
     save_results_json(base_dir, sport, target_date, results, source="auto_fetch")
@@ -114,8 +109,12 @@ def ensure_result_data(
 
 
 def _append_drive_sync(base_dir: Path, lines: list[str], *, keys: list[str] | None = None) -> None:
-    # この修正では Drive へアップロードしない。認証があっても報告はローカル接続のみ。
-    lines.append("\n\n## Google Drive\n\n今回は Drive を更新していません。ローカルExcelのみ接続・記入しています。")
+    lines.append(
+        "\n\n## Google Drive\n\n"
+        "この段階ではExcelをDriveへ送っていません。"
+        " クラウド実行（GitHub Actions）では、ジョブ終了時に既存6ファイルをID指定で上書き保存します。"
+        " 日々のExcel更新ではPRを作りません。"
+    )
 
 
 def _excel_list(base_dir: Path) -> str:
@@ -143,10 +142,10 @@ def run_predict_today(
         races, status = ensure_race_data(base_dir, sport, date)
         lines.append(status)
         if not races:
-            if sport == "jra":
-                lines.append("\n中央競馬は開催日のみ予想します。")
+            if "開催なし" in status:
+                lines.append(f"\n{label}は開催なしとして正常終了します。")
             else:
-                lines.append(f"\n{label}予想は出走情報取得後に実行します。")
+                lines.append(f"\n{label}予想はこの競技だけ中止します。")
             continue
         lines.append("\n" + run_predict_fn(sport, date, force=force, sync_drive=False))
 
@@ -168,7 +167,7 @@ def run_results_yesterday(
     load_state_fn=None,
 ) -> str:
     """「昨日の結果を確認して」用。3競技を別々に反映。"""
-    date = target_date or _yesterday_str()
+    date = target_date or yesterday_str()
     lines = [_header("昨日の結果確認（中央競馬＋地方競馬＋競艇）", date)]
 
     for sport in SPORTS:
@@ -180,11 +179,11 @@ def run_results_yesterday(
             lines.append(f"{date} の{label}予想記録がありません。")
             continue
 
-        _, status = ensure_result_data(base_dir, sport, date, day_records)
+        results, status = ensure_result_data(base_dir, sport, date, day_records)
         lines.append(status)
 
         result_path = result_data_path(base_dir, sport, date)
-        if result_path.exists() and apply_results_fn is not None:
+        if results and apply_results_fn is not None and is_official_result_file(result_path):
             lines.append(apply_results_fn(sport, date, result_path, sync_drive=False))
         elif run_results_fn is not None:
             lines.append(run_results_fn(sport, date, force=force, sync_drive=False))
