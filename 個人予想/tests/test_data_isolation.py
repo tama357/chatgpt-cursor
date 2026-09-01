@@ -29,6 +29,11 @@ from fetch import nar as fetch_nar  # noqa: E402
 
 
 class DataIsolationTest(ProductionDataGuardMixin, unittest.TestCase):
+    def test_e2e_script_does_not_write_report_file(self):
+        src = (PRODUCTION_ROOT / "tests" / "run_e2e_excel_copy_test.py").read_text(encoding="utf-8")
+        self.assertNotIn("write_text", src)
+        self.assertNotIn(".write(", src)
+
     def test_cleanup_production_helper_is_gone(self):
         fixtures = importlib.import_module("test_fixtures")
         self.assertFalse(hasattr(fixtures, "cleanup_production_runtime_files"))

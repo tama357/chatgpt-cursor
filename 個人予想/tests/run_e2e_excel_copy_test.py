@@ -115,6 +115,8 @@ def main() -> int:
     workflow = load_workflow()
     orig_root = workflow.ROOT
     production_before = snapshot_tree(ROOT / "data")
+    frozen_report = ROOT / "tests" / "e2e_excel_test_report.json"
+    frozen_report_before = frozen_report.read_bytes() if frozen_report.exists() else None
     original_hashes = {k: file_hash(p) for k, p in ORIGINALS.items()}
     sandbox = make_sandbox(ROOT, copy_excel=True)
     verify = Path(tempfile.mkdtemp(prefix="personal-e2e-verify-"))
@@ -251,18 +253,20 @@ def main() -> int:
 
     production_after = snapshot_tree(ROOT / "data")
     verify_after = snapshot_tree(verify)
+    frozen_report_after = frozen_report.read_bytes() if frozen_report.exists() else None
     report["production_data_snapshot_match"] = production_before == production_after
     report["dummy_verify_root_snapshot_match"] = verify_before == verify_after
+    report["legacy_report_file_untouched"] = frozen_report_before == frozen_report_after
     report["production_data_files"] = sorted(production_before)
     report["dummy_verify_files"] = sorted(verify_before)
     if production_before != production_after:
         failed.append("production data files changed")
     if verify_before != verify_after:
         failed.append("dummy verification root changed")
+    if frozen_report_before != frozen_report_after:
+        failed.append("legacy e2e report file changed")
     shutil.rmtree(verify, ignore_errors=True)
 
-    out = ROOT / "tests" / "e2e_excel_test_report.json"
-    out.write_text(json.dumps(report, ensure_ascii=False, indent=2, default=str) + "\n", encoding="utf-8")
     print(json.dumps(report, ensure_ascii=False, indent=2, default=str))
     if failed:
         print("FAILED:", failed, file=sys.stderr)
