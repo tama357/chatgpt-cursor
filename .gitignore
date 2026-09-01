@@ -23,6 +23,7 @@ __pycache__/
 # 個人予想の実行データ（公開リポジトリへ保存しない）
 個人予想/data/**/*
 !個人予想/data/.gitkeep
+個人予想/excel/_e2e_test/
 
 # OS / エディタ
 .DS_Store
