@@ -71,10 +71,11 @@ def validate_prediction_record(record: dict[str, Any], rules: dict[str, Any]) ->
     tickets = record.get("tickets")
     if not isinstance(tickets, list) or not tickets:
         raise ValidationError("買い目が必要です")
-    max_points = rules["max_combinations_per_race"]
+    max_pts = rules["max_combinations_per_race"]
+    min_pts = rules.get("min_combinations_per_race", 1)
     total = count_tickets(tickets)
-    if total > max_points:
-        raise ValidationError(f"買い目は{max_points}点以内にしてください")
+    if total > max_pts:
+        raise ValidationError(f"買い目は{max_pts}点以内にしてください")
     record["ticket_count"] = total
     expand_tickets(tickets)
 

@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-"""個人利用 競馬・競輪 予想・記録・集計・復習・学習システム。
+"""個人利用 競馬・競輪 予想・記録・集計・復習・学習システム（手動入力版）。
 
 提出用競輪（競輪予想/）とは完全分離。外部送信は行わない。
+レースデータ・結果JSONは手動配置が必要。
 """
 
 from __future__ import annotations
@@ -38,7 +39,7 @@ from common.state import (  # noqa: E402
 )
 from common.tickets import ValidationError, check_hit, count_tickets  # noqa: E402
 from excel.io import write_predictions, write_results, write_summary  # noqa: E402
-from excel.templates import ensure_workbooks  # noqa: E402
+from excel.templates import ensure_workbooks, init_excel  # noqa: E402
 from fetch import keiba as fetch_keiba  # noqa: E402
 from fetch import keirin as fetch_keirin  # noqa: E402
 from predict.builder import build_prediction  # noqa: E402
@@ -81,17 +82,15 @@ def run_predict(sport: str, target_date: str, *, force: bool = False) -> str:
     if sport == "keiba":
         races = fetch_keiba.fetch_races(ROOT, target_date)
         entry = excel["keiba_entry"]
-        sport_label = "競馬"
     else:
         races = fetch_keirin.fetch_races(ROOT, target_date)
         entry = excel["keirin_entry"]
-        sport_label = "競輪"
 
     if not races:
         return (
-            f"レースデータがありません。"
-            f" {ROOT}/data/races/{sport}/{target_date}.json を配置するか、"
-            f" examples/{sport}_races.sample.json を参照してください。"
+            f"【手動入力版】レースデータがありません。\n"
+            f" {ROOT}/data/races/{sport}/{target_date}.json を配置してください。\n"
+            f" テスト時は examples/{sport}_races.sample.json を参照します。"
         )
 
     selected, skipped = select_races(races, rules)
@@ -118,7 +117,7 @@ def run_predict(sport: str, target_date: str, *, force: bool = False) -> str:
                 },
             )
 
-    sheet_status = write_predictions(entry, target_date, predictions, sport_label)
+    sheet_status = write_predictions(entry, target_date, predictions)
     mark_processed(state, key, payload)
     save_json(state_path(sport), state)
 
@@ -129,11 +128,19 @@ def run_predict(sport: str, target_date: str, *, force: bool = False) -> str:
         skipped=skipped,
         sheet_status=sheet_status,
     )
-    over10 = [p for p in predictions if p.get("ticket_count", 0) > 10]
-    if over10:
-        report += "\n\n⚠ 10点超: " + ", ".join(
-            f"{p['venue']}{p['race']}R({p['ticket_count']}点)" for p in over10
+    max_pts = rules["max_combinations_per_race"]
+    over = [p for p in predictions if p.get("ticket_count", 0) > max_pts]
+    if over:
+        report += "\n\n⚠ 点数上限超過: " + ", ".join(
+            f"{p['venue']}{p['race']}R({p['ticket_count']}点)" for p in over
         )
+    min_pts = rules.get("min_combinations_per_race", 1)
+    under = [p for p in predictions if p.get("ticket_count", 0) < min_pts]
+    if under and sport == "keiba":
+        report += "\n\n⚠ 競馬目安点数未満: " + ", ".join(
+            f"{p['venue']}{p['race']}R({p['ticket_count']}点)" for p in under
+        )
+    report += "\n\n※ 予想しやすさスコア(prediction_score)はExcel列がないため、解説文とstate.jsonに保存します。"
     return report
 
 
@@ -269,13 +276,8 @@ def run_summary(target_date: str) -> str:
     return format_summary_report(kb.get("records", []), kr.get("records", []), target_date)
 
 
-def init_templates() -> str:
-    ensure_workbooks(ROOT)
-    files = ensure_workbooks(ROOT)
-    lines = ["Excelテンプレートを確認・生成しました:"]
-    for name, path in files.items():
-        lines.append(f"- {name}: {path}")
-    return "\n".join(lines)
+def init_excel_cmd() -> str:
+    return init_excel(ROOT)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -295,7 +297,7 @@ def build_parser() -> argparse.ArgumentParser:
         "learning-keiba",
         "learning-keirin",
         "report-all",
-        "init-templates",
+        "init-excel",
     ):
         sub.add_parser(name, parents=[common])
 
@@ -309,8 +311,8 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     target_date = args.date or datetime.now().strftime("%Y-%m-%d")
     try:
-        if args.command == "init-templates":
-            print(init_templates())
+        if args.command == "init-excel":
+            print(init_excel_cmd())
         elif args.command == "predict-keiba":
             print(run_predict("keiba", target_date, force=args.force))
         elif args.command == "predict-keirin":

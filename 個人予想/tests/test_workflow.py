@@ -20,7 +20,7 @@ assert TSPEC.loader is not None
 sys.modules[TSPEC.name] = tickets
 TSPEC.loader.exec_module(tickets)
 
-TEST_DATE = "2099-01-01"
+TEST_DATE = "2026-09-01"
 
 
 class PersonalWorkflowTest(unittest.TestCase):
@@ -38,9 +38,10 @@ class PersonalWorkflowTest(unittest.TestCase):
             ("4-2-1", "4-2-3", "4-2-5"),
         )
 
-    def test_init_templates_creates_excel(self):
-        msg = workflow.init_templates()
-        self.assertIn("Excelテンプレート", msg)
+    def test_init_excel_checks_files(self):
+        msg = workflow.init_excel_cmd()
+        self.assertIn("手動入力版", msg)
+        self.assertIn("sheet_mapping.json", msg)
         excel = workflow.ensure_workbooks(workflow.ROOT)
         for path in excel.values():
             self.assertTrue(path.exists())

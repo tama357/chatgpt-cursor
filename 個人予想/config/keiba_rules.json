@@ -1,10 +1,13 @@
 {
-  "version": "2026-09-01-personal",
+  "version": "2026-09-01-personal-manual",
   "sport": "keiba",
+  "mode": "manual_input",
   "timezone": "Asia/Tokyo",
   "max_races_per_day": 5,
   "bet_type": "trifecta",
-  "max_combinations_per_race": 10,
+  "min_combinations_per_race": 12,
+  "max_combinations_per_race": 30,
+  "target_combinations_note": "12〜30点を目安。上限30点",
   "stake_per_point_yen": 100,
   "primary_target": "return_rate",
   "learning_auto_apply_threshold": 100,
@@ -61,7 +64,8 @@
     "too_few_combinations",
     "other"
   ],
-  "prediction_logic_version": "keiba-v1.0.0",
+  "prediction_logic_version": "keiba-v1.1.0-manual",
   "entry_sheet": "競馬_予想記入シート_2026年9月.xlsx",
-  "summary_sheet": "競馬_予想集計シート_2026年9月.xlsx"
+  "summary_sheet": "競馬_予想集計シート_2026年9月.xlsx",
+  "month_sheets": ["202609","202610","202611","202612","202701","202702","202703","202704","202705","202706","202707","202708"]
 }

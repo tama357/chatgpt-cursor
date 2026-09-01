@@ -1,10 +1,13 @@
 {
-  "version": "2026-09-01-personal",
+  "version": "2026-09-01-personal-manual",
   "sport": "keirin_personal",
+  "mode": "manual_input",
   "timezone": "Asia/Tokyo",
   "max_races_per_day": 5,
   "bet_type": "trifecta",
+  "min_combinations_per_race": 1,
   "max_combinations_per_race": 10,
+  "target_combinations_note": "原則10点以内",
   "stake_per_point_yen": 100,
   "primary_target": "hit_rate",
   "learning_auto_apply_threshold": 100,
@@ -55,8 +58,9 @@
     "too_few_combinations",
     "other"
   ],
-  "prediction_logic_version": "keirin-personal-v1.0.0",
-  "entry_sheet": "競輪_個人_予想記入シート_2026年9月.xlsx",
-  "summary_sheet": "競輪_個人_予想集計シート_2026年9月.xlsx",
-  "note": "提出用競輪予想（競輪予想/）とは完全分離。Chatwork・Google Sheets提出用ファイルは使用しない。"
+  "prediction_logic_version": "keirin-personal-v1.1.0-manual",
+  "entry_sheet": "競輪_個人_予想記入シート.xlsx",
+  "summary_sheet": "競輪_個人_予想集計シート.xlsx",
+  "month_sheets": ["202609","202610","202611","202612","202701","202702","202703","202704","202705","202706","202707","202708"],
+  "note": "提出用競輪予想（競輪予想/）・Drive競艇ファイルとは完全分離"
 }

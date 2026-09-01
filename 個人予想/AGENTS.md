@@ -1,35 +1,31 @@
-# 個人予想：Cursor実行ルール
-
-原田真羽さん個人利用の競馬・競輪予想システム。`競輪予想/`（提出用）とは触らない。
+# 個人予想：Cursor実行ルール（手動入力版）
 
 ## 禁止
 
 - Chatwork・メール・Slack・SNS送信
-- 自動投票・外部ログイン
-- `競輪予想/` 配下の変更
-- Google Sheets提出用ファイルの編集
+- `競輪予想/` の変更
+- Drive `競艇_*.xlsx` の編集・競輪としての利用
 
-## 実行トリガー
+## Excel仕様（Drive実ファイル準拠）
 
-| 依頼 | コマンド |
-|------|----------|
-| 本日の競馬予想 | `predict-keiba` |
-| 本日の競輪予想 | `predict-keirin` |
-| 本日の全予想 | `predict-all` |
-| 競馬結果・復習 | `apply-results keiba ...` → `results-keiba` |
-| 競輪結果・復習 | `apply-results keirin ...` → `results-keirin` |
-| 学習レポート | `learning-keiba` / `learning-keirin` |
+### 予想記入シート
 
-## Excel書き込み範囲
+- 1か月1シート（`YYYYMM`）
+- 1日5行（予想番号1〜5）
+- 入力列 A〜N（数式・書式は上書きしない）
+- `prediction_score` はExcel列なし → 解説文＋state.jsonへ保存
+- `confidence` は D列（自信度）
 
-予想記入シート（入力のみ）: A-P列の予想行、Q-T列の結果行
-集計シート（入力のみ）: P-T列（5レース分）、B-O列の数式は触らない
+### 集計シート
+
+- 入力列 P〜T（1本目〜5本目）
+- B〜O列は自動計算 → 触らない
 
 ## 学習
 
-- 100レース未満: 履歴収集・傾向分析のみ。配点は変更しない
-- `recommended_weights` は提案のみ。原田さん承認前に反映しない
+- 100レース未満: 配点変更なし
+- `recommended_weights` は提案のみ
 
 ## 報告
 
-CLI出力をCursorチャットへそのまま報告する。「処理しました」だけで終わらない。
+CLI出力をCursorチャットへ報告。「処理しました」だけで終わらない。
