@@ -1,0 +1,42 @@
+{
+  "date": "2026-09-01",
+  "results": [
+    {
+      "venue": "大井",
+      "race": 11,
+      "trifecta": "3-4-1",
+      "payout": 2180,
+      "scenario_realized": true
+    },
+    {
+      "venue": "川崎",
+      "race": 10,
+      "trifecta": "2-1-3",
+      "payout": 0,
+      "scenario_realized": false,
+      "primary_miss_reason": "axis_miss"
+    },
+    {
+      "venue": "園田",
+      "race": 12,
+      "trifecta": "5-1-2",
+      "payout": 1560,
+      "scenario_realized": true
+    },
+    {
+      "venue": "浦和",
+      "race": 9,
+      "trifecta": "2-3-1",
+      "payout": 0,
+      "scenario_realized": false,
+      "primary_miss_reason": "second_place_miss"
+    },
+    {
+      "venue": "船橋",
+      "race": 8,
+      "trifecta": "4-1-2",
+      "payout": 980,
+      "scenario_realized": true
+    }
+  ]
+}

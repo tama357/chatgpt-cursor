@@ -1,13 +1,14 @@
 {
-  "version": "2026-09-01-personal-kyotei",
-  "sport": "kyotei",
+  "version": "2026-09-01-personal-nar",
+  "sport": "nar",
+  "label": "地方競馬",
   "mode": "manual_input",
   "timezone": "Asia/Tokyo",
   "max_races_per_day": 5,
   "bet_type": "trifecta",
-  "min_combinations_per_race": 8,
-  "max_combinations_per_race": 20,
-  "target_combinations_note": "8〜20点を目安。上限20点",
+  "min_combinations_per_race": 12,
+  "max_combinations_per_race": 30,
+  "target_combinations_note": "12〜30点を目安。上限30点",
   "stake_per_point_yen": 100,
   "primary_target": "return_rate",
   "learning_auto_apply_threshold": 100,
@@ -19,18 +20,25 @@
     "score_name": "prediction_score",
     "definition": "レース自体の予想しやすさ",
     "initial_weights": {
-      "axis_reliability": 20,
-      "motor_2ren": 18,
-      "exhibition_time": 15,
-      "ability_gap": 15,
-      "course_advantage": 12,
+      "recent_form": 15,
+      "distance_course_fit": 15,
+      "surface_fit": 10,
+      "track_condition": 10,
+      "draw_position": 8,
+      "running_style": 10,
       "scenario_clarity": 12,
-      "odds_clarity": 8
+      "jockey": 8,
+      "weight_class": 7,
+      "popularity_odds": 5,
+      "rest_days": 5,
+      "change_risk": 5
     },
     "penalty_codes": [
-      "evenly_matched",
-      "close_exhibition",
+      "many_first_time",
+      "unclear_pace",
       "wide_open",
+      "heavy_favorite_only",
+      "scratch_impact",
       "data_shortage",
       "other"
     ],
@@ -57,9 +65,9 @@
     "too_few_combinations",
     "other"
   ],
-  "prediction_logic_version": "kyotei-v1.0.0",
-  "entry_sheet": "競艇_予想記入シート_2026年9月.xlsx",
-  "summary_sheet": "競艇_予想集計シート_2026年9月.xlsx",
+  "prediction_logic_version": "nar-v1.0.0",
+  "entry_sheet": "地方競馬_予想記入シート_2026年9月.xlsx",
+  "summary_sheet": "地方競馬_予想集計シート_2026年9月.xlsx",
   "month_sheets": ["202609","202610","202611","202612","202701","202702","202703","202704","202705","202706","202707","202708"],
-  "note": "提出用競輪予想（競輪予想/）とは完全分離。個人競輪Excelは使用しない。中央競馬・地方競馬の学習とは混ぜない。"
+  "note": "中央競馬・競艇の成績や学習データとは完全分離。"
 }

@@ -10,11 +10,7 @@ from typing import Any
 from openpyxl import load_workbook
 from openpyxl.worksheet.worksheet import Worksheet
 
-MONTH_SHEETS = [
-    "202609", "202610", "202611", "202612",
-    "202701", "202702", "202703", "202704",
-    "202705", "202706", "202707", "202708",
-]
+from common.constants import EXCEL_FILENAMES, MONTH_SHEETS
 
 ENTRY_HEADER_ALIASES = {
     "date": ("日付",),
@@ -211,12 +207,7 @@ def load_summary_mapping(path: Path, sheet_name: str) -> SummarySheetMapping:
 
 def write_mapping_cache(base_dir: Path) -> Path:
     excel_dir = base_dir / "excel"
-    files = {
-        "keiba_entry": excel_dir / "競馬_予想記入シート_2026年9月.xlsx",
-        "keiba_summary": excel_dir / "競馬_予想集計シート_2026年9月.xlsx",
-        "kyotei_entry": excel_dir / "競艇_予想記入シート_2026年9月.xlsx",
-        "kyotei_summary": excel_dir / "競艇_予想集計シート_2026年9月.xlsx",
-    }
+    files = {key: excel_dir / name for key, name in EXCEL_FILENAMES.items()}
     cache: dict[str, Any] = {}
     for key, path in files.items():
         kind = "entry" if "entry" in key else "summary"

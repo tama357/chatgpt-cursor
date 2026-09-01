@@ -172,39 +172,31 @@ def format_learning_report_text(report: dict[str, Any]) -> str:
 
 
 def format_summary_report(
-    keiba_records: list[dict[str, Any]],
-    kyotei_records: list[dict[str, Any]],
+    records_by_sport: dict[str, list[dict[str, Any]]],
     date: str,
 ) -> str:
-    kb = performance([r for r in keiba_records if r.get("result") and r["result"]["status"] != "未実施"])
-    kt = performance([r for r in kyotei_records if r.get("result") and r["result"]["status"] != "未実施"])
-    day_kb = performance(
-        [
+    from common.constants import SPORT_LABELS, SPORTS
+
+    lines = [f"# 全体成績報告（{date}）", "", "各競技の学習・成績は混ぜていません。"]
+    for sport in SPORTS:
+        records = records_by_sport.get(sport, [])
+        done = [r for r in records if r.get("result") and r["result"]["status"] != "未実施"]
+        day = [
             r
-            for r in keiba_records
-            if r["date"] == date and r.get("result") and r["result"]["status"] != "未実施"
+            for r in done
+            if r.get("date") == date
         ]
-    )
-    day_kt = performance(
-        [
-            r
-            for r in kyotei_records
-            if r["date"] == date and r.get("result") and r["result"]["status"] != "未実施"
-        ]
-    )
-    return "\n".join(
-        [
-            f"# 全体成績報告（{date}）",
-            "",
-            "## 競馬",
-            f"- 当日: 的中率{_pct(day_kb['hit_rate'])} / 回収率{_pct(day_kb['return_rate'])}",
-            f"- 累計: 的中率{_pct(kb['hit_rate'])} / 回収率{_pct(kb['return_rate'])} (n={kb['n']})",
-            "",
-            "## 競艇",
-            f"- 当日: 的中率{_pct(day_kt['hit_rate'])} / 回収率{_pct(day_kt['return_rate'])}",
-            f"- 累計: 的中率{_pct(kt['hit_rate'])} / 回収率{_pct(kt['return_rate'])} (n={kt['n']})",
-        ]
-    )
+        total = performance(done)
+        today = performance(day)
+        lines.extend(
+            [
+                "",
+                f"## {SPORT_LABELS[sport]}",
+                f"- 当日: 的中率{_pct(today['hit_rate'])} / 回収率{_pct(today['return_rate'])}",
+                f"- 累計: 的中率{_pct(total['hit_rate'])} / 回収率{_pct(total['return_rate'])} (n={total['n']})",
+            ]
+        )
+    return "\n".join(lines)
 
 
 def _pct(value: float | None) -> str:

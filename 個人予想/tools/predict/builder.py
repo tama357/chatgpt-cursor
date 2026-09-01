@@ -45,7 +45,7 @@ def _build_tickets(
     rivals = candidate.get("rivals") or _top_rivals(entries, axis)
     min_pts = rules.get("min_combinations_per_race", 1)
     max_pts = rules["max_combinations_per_race"]
-    if rules.get("sport") in {"keiba", "kyotei"}:
+    if rules.get("sport") in {"jra", "nar", "kyotei", "keiba"}:
         return _build_keiba_tickets(axis, rivals, entries, min_pts, max_pts)
     return _build_keirin_tickets(axis, rivals, entries, max_pts)
 

@@ -1,10 +1,8 @@
 import importlib.util
-import json
 import shutil
 import sys
 import unittest
 from pathlib import Path
-from unittest.mock import patch
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -31,17 +29,18 @@ def _copy_sample(sport: str) -> Path:
 
 
 class OrchestratorTest(unittest.TestCase):
-    def test_ensure_kyotei_race_data(self):
-        path = _copy_sample("kyotei")
-        races, status = ensure_race_data(ROOT, "kyotei", TEST_DATE)
-        self.assertTrue(path.exists())
-        self.assertGreaterEqual(len(races), 1)
-        self.assertIn("✅", status)
-        self.assertIn("競艇", status)
+    def test_ensure_three_sports(self):
+        for sport, needle in (("jra", "中央競馬"), ("nar", "地方競馬"), ("kyotei", "競艇")):
+            path = _copy_sample(sport)
+            races, status = ensure_race_data(ROOT, sport, TEST_DATE)
+            self.assertTrue(path.exists())
+            self.assertGreaterEqual(len(races), 1)
+            self.assertIn("✅", status)
+            self.assertIn(needle, status)
 
-    def test_predict_today_runs(self):
-        _copy_sample("keiba")
-        _copy_sample("kyotei")
+    def test_predict_today_runs_three_sports(self):
+        for sport in ("jra", "nar", "kyotei"):
+            _copy_sample(sport)
         report = run_predict_today(
             ROOT,
             target_date=TEST_DATE,
@@ -49,8 +48,11 @@ class OrchestratorTest(unittest.TestCase):
             run_predict_fn=workflow.run_predict,
         )
         self.assertIn("今日の予想", report)
+        self.assertIn("中央競馬", report)
+        self.assertIn("地方競馬", report)
         self.assertIn("競艇", report)
         self.assertNotIn("個人競輪", report)
+        self.assertIn("中央競馬_予想記入シート", report)
 
 
 if __name__ == "__main__":

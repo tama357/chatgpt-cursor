@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""個人利用 競馬・競艇 予想・記録・集計・復習・学習システム。
+"""個人利用 中央競馬・地方競馬・競艇 予想・記録・集計・復習・学習システム。
 
 提出用競輪（競輪予想/）とは完全分離。外部送信は行わない。
 原田さんは Cursor チャットのみ。JSON作成・コマンド入力は Cursor が実行する。
@@ -17,7 +17,13 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools"))
 
-from common.aggregation import aggregate_periods, build_analysis  # noqa: E402
+from common.aggregation import build_analysis  # noqa: E402
+from common.constants import (  # noqa: E402
+    RULE_FILES,
+    SPORT_EXCEL_KEYS,
+    SPORT_LABELS,
+    SPORTS,
+)
 from common.learning import build_learning_report  # noqa: E402
 from common.reporting import (  # noqa: E402
     format_learning_report_text,
@@ -41,23 +47,17 @@ from common.tickets import ValidationError, check_hit, count_tickets  # noqa: E4
 from excel.io import write_predictions, write_results, write_summary  # noqa: E402
 from excel.templates import ensure_workbooks, init_excel  # noqa: E402
 from excel.drive_sync import DriveAuthError, sync_excel_files  # noqa: E402
-from fetch import keiba as fetch_keiba  # noqa: E402
+from fetch import jra as fetch_jra  # noqa: E402
+from fetch import nar as fetch_nar  # noqa: E402
 from fetch import kyotei as fetch_kyotei  # noqa: E402
 from fetch.race_builder import load_races_from_file, save_races_json  # noqa: E402
 from orchestrator import run_predict_today, run_results_yesterday  # noqa: E402
 from predict.builder import build_prediction  # noqa: E402
 from predict.scorer import select_races  # noqa: E402
 
-SPORT_LABELS = {"keiba": "競馬", "kyotei": "競艇"}
-CONFIG_FILES = {
-    "keiba": ROOT / "config" / "keiba_rules.json",
-    "kyotei": ROOT / "config" / "kyotei_rules.json",
-}
-SPORT_EXCEL_KEYS = {
-    "keiba": ["keiba_entry", "keiba_summary"],
-    "kyotei": ["kyotei_entry", "kyotei_summary"],
-}
-FETCHERS = {"keiba": fetch_keiba, "kyotei": fetch_kyotei}
+CONFIG_FILES = {sport: ROOT / "config" / filename for sport, filename in RULE_FILES.items()}
+FETCHERS = {"jra": fetch_jra, "nar": fetch_nar, "kyotei": fetch_kyotei}
+UNSUPPORTED = "未対応の競技です: {sport}（個人予想は中央競馬・地方競馬・競艇のみ）"
 
 
 def load_rules(sport: str) -> dict[str, Any]:
@@ -71,18 +71,19 @@ def state_path(sport: str) -> Path:
 
 def run_predict(sport: str, target_date: str, *, force: bool = False, sync_drive: bool = True) -> str:
     if sport not in CONFIG_FILES:
-        return f"未対応の競技です: {sport}（個人予想は競馬と競艇のみ）"
+        return UNSUPPORTED.format(sport=sport)
     rules = load_rules(sport)
     state = load_json(state_path(sport))
     state["sport"] = rules["sport"]
     key = f"predict:{target_date}"
     payload = {"date": target_date, "sport": sport}
+    label = SPORT_LABELS[sport]
 
     if not force and is_processed(state, key, payload):
         existing = find_day_records(state, target_date)
         if existing:
             return (
-                f"⚠ 二重登録防止: {target_date} の{sport}予想は処理済みです。"
+                f"⚠ 二重登録防止: {target_date} の{label}予想は処理済みです。"
                 f"再実行する場合は --force を付けてください。"
                 f"\n\n既存 {len(existing)} レース"
             )
@@ -93,8 +94,13 @@ def run_predict(sport: str, target_date: str, *, force: bool = False, sync_drive
     entry = excel[f"{sport}_entry"]
 
     if not races:
+        if sport == "jra":
+            return (
+                f"【開催なし】{target_date} は中央競馬（JRA）の開催日ではありません。"
+                "中央競馬は開催日のみ予想します。"
+            )
         return (
-            f"【出走情報未取得】レースデータがありません。\n"
+            f"【出走情報未取得】{label}のレースデータがありません。\n"
             f" Cursorが {ROOT}/data/races/{sport}/{target_date}.json を作成します。\n"
             f" 原田さんの手作業は不要です。"
         )
@@ -104,6 +110,7 @@ def run_predict(sport: str, target_date: str, *, force: bool = False, sync_drive
     for idx, candidate in enumerate(selected, start=1):
         pred = build_prediction(candidate, rules, idx)
         pred["date"] = target_date
+        pred["sport"] = rules["sport"]
         validate_prediction_record(pred, rules)
         upsert_record(state, pred)
         predictions.append(pred)
@@ -128,7 +135,7 @@ def run_predict(sport: str, target_date: str, *, force: bool = False, sync_drive
     save_json(state_path(sport), state)
 
     report = format_prediction_report(
-        sport_label=SPORT_LABELS[sport],
+        sport_label=label,
         date=target_date,
         selected=predictions,
         skipped=skipped,
@@ -154,11 +161,12 @@ def run_predict(sport: str, target_date: str, *, force: bool = False, sync_drive
 
 def run_results(sport: str, target_date: str, *, force: bool = False, sync_drive: bool = True) -> str:
     if sport not in CONFIG_FILES:
-        return f"未対応の競技です: {sport}（個人予想は競馬と競艇のみ）"
+        return UNSUPPORTED.format(sport=sport)
     rules = load_rules(sport)
     state = load_json(state_path(sport))
     key = f"results:{target_date}"
     payload = {"date": target_date, "sport": sport}
+    label = SPORT_LABELS[sport]
 
     day_records = [
         r
@@ -166,7 +174,7 @@ def run_results(sport: str, target_date: str, *, force: bool = False, sync_drive
         if not r.get("skipped") and r.get("tickets")
     ]
     if not day_records:
-        return f"{target_date} の{sport}予想記録がありません。先に予想を実行してください。"
+        return f"{target_date} の{label}予想記録がありません。先に予想を実行してください。"
 
     pending = [r for r in day_records if not r.get("result")]
     if pending:
@@ -178,7 +186,7 @@ def run_results(sport: str, target_date: str, *, force: bool = False, sync_drive
         )
 
     if not force and is_processed(state, key, payload):
-        return f"⚠ 二重登録防止: {target_date} の{sport}結果処理は済みです。--force で再実行可。"
+        return f"⚠ 二重登録防止: {target_date} の{label}結果処理は済みです。--force で再実行可。"
 
     ensure_workbooks(ROOT)
     excel = ensure_workbooks(ROOT)
@@ -197,6 +205,7 @@ def run_results(sport: str, target_date: str, *, force: bool = False, sync_drive
             result["secondary_miss_reasons"] = review.get("secondary_miss_reasons", [])
             result["close_miss"] = review.get("close_miss", False)
         record["learning"] = {
+            "sport": sport,
             "fetched_data": record.get("fetched_data"),
             "prediction_score": record.get("prediction_score"),
             "confidence": record.get("confidence"),
@@ -222,7 +231,7 @@ def run_results(sport: str, target_date: str, *, force: bool = False, sync_drive
     save_json(state_path(sport), state)
 
     base_report = format_result_report(
-        sport_label=SPORT_LABELS[sport],
+        sport_label=label,
         date=target_date,
         records=result_items,
         all_records=get_records(state, with_result=True),
@@ -286,9 +295,8 @@ def run_learning_report(sport: str) -> str:
 
 
 def run_summary(target_date: str) -> str:
-    kb = load_json(state_path("keiba"))
-    kt = load_json(state_path("kyotei"))
-    return format_summary_report(kb.get("records", []), kt.get("records", []), target_date)
+    by_sport = {sport: load_json(state_path(sport)).get("records", []) for sport in SPORTS}
+    return format_summary_report(by_sport, target_date)
 
 
 def init_excel_cmd() -> str:
@@ -303,7 +311,7 @@ def sync_drive_cmd(*, keys: list[str] | None = None) -> str:
             "## Google Drive 同期\n\n"
             f"❌ Drive同期失敗: {exc}\n\n"
             "ローカルExcelのみ更新されています。"
-            " Cursor が Google Drive MCP でアップロードし、成功確認後に報告してください。"
+            " 今回の仕様では Drive へはアップロードしません。"
         )
     return report.format_report()
 
@@ -312,6 +320,11 @@ def save_races_cmd(sport: str, target_date: str, races_file: Path) -> str:
     races = load_races_from_file(races_file)
     path = save_races_json(ROOT, sport, target_date, races, source="cursor_web")
     return f"レースJSONを保存しました: {path}（{len(races)}レース）"
+
+
+def _run_all(fn, target_date: str, *, force: bool = False) -> str:
+    parts = [fn(sport, target_date, force=force) for sport in SPORTS]
+    return "\n\n---\n\n".join(parts)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -324,13 +337,16 @@ def build_parser() -> argparse.ArgumentParser:
     for name in (
         "predict-today",
         "results-yesterday",
-        "predict-keiba",
+        "predict-jra",
+        "predict-nar",
         "predict-kyotei",
         "predict-all",
-        "results-keiba",
+        "results-jra",
+        "results-nar",
         "results-kyotei",
         "results-all",
-        "learning-keiba",
+        "learning-jra",
+        "learning-nar",
         "learning-kyotei",
         "report-all",
         "init-excel",
@@ -339,11 +355,11 @@ def build_parser() -> argparse.ArgumentParser:
         sub.add_parser(name, parents=[common])
 
     apply = sub.add_parser("apply-results", parents=[common])
-    apply.add_argument("sport", choices=["keiba", "kyotei"])
+    apply.add_argument("sport", choices=list(SPORTS))
     apply.add_argument("results_file", type=Path)
 
     save_races = sub.add_parser("save-races", parents=[common])
-    save_races.add_argument("sport", choices=["keiba", "kyotei"])
+    save_races.add_argument("sport", choices=list(SPORTS))
     save_races.add_argument("races_file", type=Path)
     return parser
 
@@ -378,24 +394,26 @@ def main(argv: list[str] | None = None) -> int:
                     load_state_fn=lambda sport: load_json(state_path(sport)),
                 )
             )
-        elif args.command == "predict-keiba":
-            print(run_predict("keiba", target_date, force=args.force))
+        elif args.command == "predict-jra":
+            print(run_predict("jra", target_date, force=args.force))
+        elif args.command == "predict-nar":
+            print(run_predict("nar", target_date, force=args.force))
         elif args.command == "predict-kyotei":
             print(run_predict("kyotei", target_date, force=args.force))
         elif args.command == "predict-all":
-            print(run_predict("keiba", target_date, force=args.force))
-            print("\n---\n")
-            print(run_predict("kyotei", target_date, force=args.force))
-        elif args.command == "results-keiba":
-            print(run_results("keiba", target_date, force=args.force))
+            print(_run_all(run_predict, target_date, force=args.force))
+        elif args.command == "results-jra":
+            print(run_results("jra", target_date, force=args.force))
+        elif args.command == "results-nar":
+            print(run_results("nar", target_date, force=args.force))
         elif args.command == "results-kyotei":
             print(run_results("kyotei", target_date, force=args.force))
         elif args.command == "results-all":
-            print(run_results("keiba", target_date, force=args.force))
-            print("\n---\n")
-            print(run_results("kyotei", target_date, force=args.force))
-        elif args.command == "learning-keiba":
-            print(run_learning_report("keiba"))
+            print(_run_all(run_results, target_date, force=args.force))
+        elif args.command == "learning-jra":
+            print(run_learning_report("jra"))
+        elif args.command == "learning-nar":
+            print(run_learning_report("nar"))
         elif args.command == "learning-kyotei":
             print(run_learning_report("kyotei"))
         elif args.command == "report-all":
