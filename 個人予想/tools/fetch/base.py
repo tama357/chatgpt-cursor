@@ -5,7 +5,16 @@ from datetime import date
 from pathlib import Path
 from typing import Any
 
-SAMPLE_SOURCES = frozenset({"sample", "example", "examples"})
+SAMPLE_SOURCES = frozenset(
+    {
+        "sample",
+        "example",
+        "examples",
+        "test_fixture",
+        "fixture",
+        "test",
+    }
+)
 
 
 def is_sample_payload(data: Any, path: Path | None = None) -> bool:
@@ -14,7 +23,17 @@ def is_sample_payload(data: Any, path: Path | None = None) -> bool:
     if not isinstance(data, dict):
         return False
     source = str(data.get("source", "")).strip().lower()
-    return source in SAMPLE_SOURCES or source.endswith("-sample") or source.startswith("sample")
+    if not source:
+        return False
+    return (
+        source in SAMPLE_SOURCES
+        or source.endswith("-sample")
+        or source.endswith("_sample")
+        or source.endswith("-fixture")
+        or source.endswith("_fixture")
+        or source.startswith("sample")
+        or source.startswith("test")
+    )
 
 
 def load_race_data(
@@ -27,7 +46,7 @@ def load_race_data(
     """レースデータを読み込む。
 
     本番（allow_sample=False）は data/races の本番JSONのみ。
-    examples と source=sample の残りファイルは使わない。
+    examples・source=sample / test_fixture の残りファイルは使わない。
     """
     data_path = base_dir / "data" / "races" / sport / f"{target_date}.json"
     if data_path.exists():

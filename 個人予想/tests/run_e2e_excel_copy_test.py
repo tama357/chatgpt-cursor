@@ -16,12 +16,13 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(ROOT / "tools"))
 from common.constants import EXCEL_FILENAMES, SPORTS  # noqa: E402
-from test_fixtures import install_test_races  # noqa: E402
+from test_fixtures import (  # noqa: E402
+    TEST_DATE,
+    cleanup_production_runtime_files,
+    leftover_production_race_paths,
+)
 
-TEST_DATE = "2026-09-01"
 SHEET = "202609"
-TEST_EXCEL = ROOT / "excel" / "_e2e_test"
-TEST_DATA = ROOT / "data" / "_e2e_test"
 ORIGINALS = {key: ROOT / "excel" / name for key, name in EXCEL_FILENAMES.items()}
 
 
@@ -39,27 +40,23 @@ def file_hash(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def setup_copies() -> dict[str, Path]:
-    if TEST_EXCEL.exists():
-        shutil.rmtree(TEST_EXCEL)
-    if TEST_DATA.exists():
-        shutil.rmtree(TEST_DATA)
-    TEST_EXCEL.mkdir(parents=True)
-    TEST_DATA.mkdir(parents=True)
+def setup_copies(tmp: Path) -> dict[str, Path]:
+    excel_dir = tmp / "excel"
+    excel_dir.mkdir(parents=True)
     copies: dict[str, Path] = {}
     for key, src in ORIGINALS.items():
-        dst = TEST_EXCEL / src.name
+        dst = excel_dir / src.name
         shutil.copy2(src, dst)
         copies[key] = dst
     return copies
 
 
-def patch_workflow(workflow, copies: dict[str, Path]) -> None:
+def patch_workflow(workflow, copies: dict[str, Path], data_dir: Path) -> None:
     def test_workbooks(_base: Path) -> dict[str, Path]:
         return dict(copies)
 
     def test_state_path(sport: str) -> Path:
-        return TEST_DATA / sport / "state.json"
+        return data_dir / sport / "state.json"
 
     workflow.ensure_workbooks = test_workbooks  # type: ignore[method-assign]
     workflow.state_path = test_state_path  # type: ignore[method-assign]
@@ -122,113 +119,152 @@ def has_formula_errors(path: Path) -> bool:
 
 
 def main() -> int:
+    import tempfile
+
+    cleanup_production_runtime_files(ROOT)
     workflow = load_workflow()
     original_hashes = {k: file_hash(p) for k, p in ORIGINALS.items()}
-    copies = setup_copies()
-    patch_workflow(workflow, copies)
-    for sport in SPORTS:
-        install_test_races(ROOT, sport, TEST_DATE)
-
+    tmp = Path(tempfile.mkdtemp(prefix="personal-e2e-"))
+    failed: list[str] = []
     report: dict[str, object] = {
         "date": TEST_DATE,
         "data_mode": "テストデータ使用",
-        "note": "examples を test_fixture として使う。本番の当日レースではない。",
+        "note": "一時ディレクトリで allow_sample=True。本番 data には残さない。",
         "checks": [],
         "sports": list(SPORTS),
     }
-    failed: list[str] = []
+    try:
+        copies = setup_copies(tmp)
+        patch_workflow(workflow, copies, tmp / "data")
 
-    predict_check: dict[str, object] = {"step": "predict-all"}
-    apply_check: dict[str, object] = {"step": "apply-results"}
-    for sport in SPORTS:
-        entry = copies[f"{sport}_entry"]
-        summary = copies[f"{sport}_summary"]
-        before = read_entry_rows(entry)
-        formula_before = snapshot_formulas(summary, SHEET, range(12, 15), range(2, 16))
-        merge_before = snapshot_merges_and_dv(entry, SHEET)
+        predict_check: dict[str, object] = {"step": "predict-all"}
+        apply_check: dict[str, object] = {"step": "apply-results"}
+        for sport in SPORTS:
+            entry = copies[f"{sport}_entry"]
+            summary = copies[f"{sport}_summary"]
+            before = read_entry_rows(entry)
+            formula_before = snapshot_formulas(summary, SHEET, range(12, 15), range(2, 16))
+            merge_before = snapshot_merges_and_dv(entry, SHEET)
 
-        pred = workflow.run_predict(sport, TEST_DATE, force=True, sync_drive=False)
-        report[f"predict_{sport}_head"] = pred.splitlines()[:5]
-        after = read_entry_rows(entry)
-        merge_after = snapshot_merges_and_dv(entry, SHEET)
-        ab_ok = all(after[i]["A"] == before[i]["A"] and after[i]["B"] == before[i]["B"] for i in range(5))
-        filled = sum(1 for i in range(5) if any(after[i][c] not in (None, "") for c in "CDEFGHIJK"))
-        predict_check[f"{sport}_AB_preserved"] = ab_ok
-        predict_check[f"{sport}_filled_rows"] = filled
-        predict_check[f"{sport}_max5"] = filled <= 5
-        predict_check[f"{sport}_merges_unchanged"] = merge_before[0] == merge_after[0]
-        predict_check[f"{sport}_rows_3_7"] = after
-        if not ab_ok:
-            failed.append(f"{sport} AB changed")
-        if filled < 1:
-            failed.append(f"{sport} no predictions written")
-        if filled > 5:
-            failed.append(f"{sport} more than 5 races")
+            pred = workflow.run_predict(
+                sport,
+                TEST_DATE,
+                force=True,
+                sync_drive=False,
+                allow_sample=True,
+                try_auto=False,
+            )
+            report[f"predict_{sport}_head"] = pred.splitlines()[:5]
+            after = read_entry_rows(entry)
+            merge_after = snapshot_merges_and_dv(entry, SHEET)
+            ab_ok = all(
+                after[i]["A"] == before[i]["A"] and after[i]["B"] == before[i]["B"]
+                for i in range(5)
+            )
+            filled = sum(
+                1 for i in range(5) if any(after[i][c] not in (None, "") for c in "CDEFGHIJK")
+            )
+            predict_check[f"{sport}_AB_preserved"] = ab_ok
+            predict_check[f"{sport}_filled_rows"] = filled
+            predict_check[f"{sport}_max5"] = filled <= 5
+            predict_check[f"{sport}_merges_unchanged"] = merge_before[0] == merge_after[0]
+            predict_check[f"{sport}_rows_3_7"] = after
+            if not ab_ok:
+                failed.append(f"{sport} AB changed")
+            if filled < 1:
+                failed.append(f"{sport} no predictions written")
+            if filled > 5:
+                failed.append(f"{sport} more than 5 races")
 
-        workflow.apply_results_from_file(
-            sport, TEST_DATE, ROOT / "examples" / f"{sport}_results.sample.json", sync_drive=False
+            workflow.apply_results_from_file(
+                sport,
+                TEST_DATE,
+                ROOT / "examples" / f"{sport}_results.sample.json",
+                sync_drive=False,
+            )
+            after_res = read_entry_rows(entry)
+            summary_pt = read_summary_pt(summary)
+            formula_after = snapshot_formulas(summary, SHEET, range(12, 15), range(2, 16))
+            ln = [{k: after_res[i][k] for k in "LMN"} for i in range(min(3, filled))]
+            apply_check[f"{sport}_L-N_sample"] = ln
+            apply_check[f"{sport}_summary_PT"] = summary_pt
+            apply_check[f"{sport}_B-O_formulas_unchanged"] = formula_before == formula_after
+            apply_check[f"{sport}_formula_errors"] = has_formula_errors(summary)
+            if any(not row.get("L") for row in ln):
+                failed.append(f"{sport} results L empty")
+            statuses = summary_pt.get("row12_P-T") or []
+            if not any(s in {"的中", "ハズレ"} for s in statuses):
+                failed.append(f"{sport} summary P-T not updated")
+            if formula_before != formula_after:
+                failed.append(f"{sport} summary formulas changed")
+            if apply_check[f"{sport}_formula_errors"]:
+                failed.append(f"{sport} formula errors")
+
+            review_state = workflow.load_json(workflow.state_path(sport))
+            reviewed = [r for r in review_state.get("records", []) if r.get("review")]
+            apply_check[f"{sport}_review_count"] = len(reviewed)
+            if not reviewed:
+                failed.append(f"{sport} review missing")
+
+        report["checks"].append(predict_check)
+        report["checks"].append(apply_check)
+
+        dup_ok = True
+        for sport in SPORTS:
+            dup = workflow.run_predict(
+                sport,
+                TEST_DATE,
+                force=False,
+                sync_drive=False,
+                allow_sample=True,
+                try_auto=False,
+            )
+            if "二重登録防止" not in dup:
+                dup_ok = False
+                failed.append(f"{sport} idempotency failed")
+        report["checks"].append({"step": "idempotency", "all_blocked": dup_ok})
+
+        unchanged = all(file_hash(ORIGINALS[k]) == original_hashes[k] for k in ORIGINALS)
+        report["checks"].append({"step": "isolation", "originals_unchanged": unchanged})
+        if not unchanged:
+            failed.append("originals modified")
+
+        src = (ROOT / "tools" / "workflow.py").read_text()
+        chatwork = "send_chatwork" in src or "chatwork_request" in src
+        report["checks"].append({"step": "chatwork", "workflow_calls_chatwork": chatwork})
+        if chatwork:
+            failed.append("chatwork referenced")
+
+        jra_state = workflow.load_json(workflow.state_path("jra"))
+        nar_state = workflow.load_json(workflow.state_path("nar"))
+        jra_venues = {r.get("venue") for r in jra_state.get("records", []) if r.get("tickets")}
+        nar_venues = {r.get("venue") for r in nar_state.get("records", []) if r.get("tickets")}
+        separated = bool(jra_venues) and bool(nar_venues) and not (jra_venues & nar_venues)
+        report["checks"].append(
+            {
+                "step": "learning_separated",
+                "jra_venues": sorted(jra_venues),
+                "nar_venues": sorted(nar_venues),
+                "no_overlap": separated,
+            }
         )
-        after_res = read_entry_rows(entry)
-        summary_pt = read_summary_pt(summary)
-        formula_after = snapshot_formulas(summary, SHEET, range(12, 15), range(2, 16))
-        ln = [{k: after_res[i][k] for k in "LMN"} for i in range(min(3, filled))]
-        apply_check[f"{sport}_L-N_sample"] = ln
-        apply_check[f"{sport}_summary_PT"] = summary_pt
-        apply_check[f"{sport}_B-O_formulas_unchanged"] = formula_before == formula_after
-        apply_check[f"{sport}_formula_errors"] = has_formula_errors(summary)
-        if any(not row.get("L") for row in ln):
-            failed.append(f"{sport} results L empty")
-        statuses = summary_pt.get("row12_P-T") or []
-        if not any(s in {"的中", "ハズレ"} for s in statuses):
-            failed.append(f"{sport} summary P-T not updated")
-        if formula_before != formula_after:
-            failed.append(f"{sport} summary formulas changed")
-        if apply_check[f"{sport}_formula_errors"]:
-            failed.append(f"{sport} formula errors")
+        if not separated:
+            failed.append("jra/nar learning mixed")
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+        cleanup_production_runtime_files(ROOT)
 
-        review_state = workflow.load_json(workflow.state_path(sport))
-        reviewed = [r for r in review_state.get("records", []) if r.get("review")]
-        apply_check[f"{sport}_review_count"] = len(reviewed)
-        if not reviewed:
-            failed.append(f"{sport} review missing")
-
-    report["checks"].append(predict_check)
-    report["checks"].append(apply_check)
-
-    dup_ok = True
+    leftovers = leftover_production_race_paths(ROOT)
+    report["production_race_json_leftover"] = [str(p) for p in leftovers]
+    if leftovers:
+        failed.append("production race json leftover")
     for sport in SPORTS:
-        dup = workflow.run_predict(sport, TEST_DATE, force=False, sync_drive=False)
-        if "二重登録防止" not in dup:
-            dup_ok = False
-            failed.append(f"{sport} idempotency failed")
-    report["checks"].append({"step": "idempotency", "all_blocked": dup_ok})
-
-    unchanged = all(file_hash(ORIGINALS[k]) == original_hashes[k] for k in ORIGINALS)
-    report["checks"].append({"step": "isolation", "originals_unchanged": unchanged})
-    if not unchanged:
-        failed.append("originals modified")
-
-    src = (ROOT / "tools" / "workflow.py").read_text()
-    chatwork = "send_chatwork" in src or "chatwork_request" in src
-    report["checks"].append({"step": "chatwork", "workflow_calls_chatwork": chatwork})
-    if chatwork:
-        failed.append("chatwork referenced")
-
-    jra_state = workflow.load_json(workflow.state_path("jra"))
-    nar_state = workflow.load_json(workflow.state_path("nar"))
-    jra_venues = {r.get("venue") for r in jra_state.get("records", []) if r.get("tickets")}
-    nar_venues = {r.get("venue") for r in nar_state.get("records", []) if r.get("tickets")}
-    separated = bool(jra_venues) and bool(nar_venues) and not (jra_venues & nar_venues)
-    report["checks"].append(
-        {
-            "step": "learning_separated",
-            "jra_venues": sorted(jra_venues),
-            "nar_venues": sorted(nar_venues),
-            "no_overlap": separated,
-        }
-    )
-    if not separated:
-        failed.append("jra/nar learning mixed")
+        state_path = ROOT / "data" / sport / "state.json"
+        result_path = ROOT / "data" / "results" / sport / f"{TEST_DATE}.json"
+        if state_path.exists():
+            failed.append(f"{sport} state leftover")
+        if result_path.exists():
+            failed.append(f"{sport} results leftover")
 
     out = ROOT / "tests" / "e2e_excel_test_report.json"
     out.write_text(json.dumps(report, ensure_ascii=False, indent=2, default=str) + "\n", encoding="utf-8")

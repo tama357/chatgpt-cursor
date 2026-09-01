@@ -69,7 +69,15 @@ def state_path(sport: str) -> Path:
     return ROOT / "data" / sport / "state.json"
 
 
-def run_predict(sport: str, target_date: str, *, force: bool = False, sync_drive: bool = True) -> str:
+def run_predict(
+    sport: str,
+    target_date: str,
+    *,
+    force: bool = False,
+    sync_drive: bool = True,
+    allow_sample: bool = False,
+    try_auto: bool = True,
+) -> str:
     if sport not in CONFIG_FILES:
         return UNSUPPORTED.format(sport=sport)
     rules = load_rules(sport)
@@ -91,7 +99,7 @@ def run_predict(sport: str, target_date: str, *, force: bool = False, sync_drive
     ensure_workbooks(ROOT)
     excel = ensure_workbooks(ROOT)
     races = FETCHERS[sport].fetch_races(
-        ROOT, target_date, allow_sample=False, try_auto=True
+        ROOT, target_date, allow_sample=allow_sample, try_auto=try_auto
     )
     entry = excel[f"{sport}_entry"]
 
@@ -334,6 +342,7 @@ def build_parser() -> argparse.ArgumentParser:
     common = argparse.ArgumentParser(add_help=False)
     common.add_argument("--date", help="対象日 YYYY-MM-DD（省略時は今日）")
     common.add_argument("--force", action="store_true", help="二重登録防止を上書き")
+    # --allow-sample は意図的に無い。CLI / predict-today からサンプルは使えない。
     sub = parser.add_subparsers(dest="command", required=True)
 
     for name in (

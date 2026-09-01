@@ -1,12 +1,18 @@
 import importlib.util
+import shutil
 import sys
 import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from test_fixtures import install_test_races  # noqa: E402
+from test_fixtures import (  # noqa: E402
+    PRODUCTION_ROOT,
+    TEST_DATE,
+    cleanup_production_runtime_files,
+    make_sandbox,
+)
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = PRODUCTION_ROOT
 WORKFLOW_PATH = ROOT / "tools" / "workflow.py"
 SPEC = importlib.util.spec_from_file_location("personal_workflow", WORKFLOW_PATH)
 workflow = importlib.util.module_from_spec(SPEC)
@@ -21,7 +27,6 @@ assert TSPEC.loader is not None
 sys.modules[TSPEC.name] = tickets
 TSPEC.loader.exec_module(tickets)
 
-TEST_DATE = "2026-09-01"
 SPORTS = ("jra", "nar", "kyotei")
 EXCEL_KEYS = (
     "jra_entry",
@@ -34,20 +39,23 @@ EXCEL_KEYS = (
 
 
 class PersonalWorkflowTest(unittest.TestCase):
-    """通し確認は examples を test_fixture として置く（テストデータ使用。本番フォールバックではない）。"""
+    """通し確認は一時ディレクトリ＋ allow_sample=True（テストデータ使用）。"""
 
     def setUp(self):
-        self.data_dir = ROOT / "data"
-        for sport in SPORTS:
-            sport_dir = self.data_dir / sport
-            races_dir = self.data_dir / "races" / sport
-            if sport_dir.exists():
-                for f in sport_dir.glob("*.json"):
-                    f.unlink()
-            races_dir.mkdir(parents=True, exist_ok=True)
-            for f in races_dir.glob("*.json"):
-                f.unlink()
-            install_test_races(ROOT, sport, TEST_DATE)
+        cleanup_production_runtime_files(ROOT)
+        self.sandbox = make_sandbox(ROOT, copy_excel=True)
+        self.addCleanup(shutil.rmtree, self.sandbox, True)
+        self.addCleanup(cleanup_production_runtime_files, ROOT)
+        self._orig_root = workflow.ROOT
+        workflow.ROOT = self.sandbox
+        self.addCleanup(setattr, workflow, "ROOT", self._orig_root)
+
+    def _predict(self, sport: str, **kwargs):
+        kwargs.setdefault("force", True)
+        kwargs.setdefault("sync_drive", False)
+        kwargs.setdefault("allow_sample", True)
+        kwargs.setdefault("try_auto", False)
+        return workflow.run_predict(sport, TEST_DATE, **kwargs)
 
     def test_expand_pick(self):
         self.assertEqual(
@@ -76,8 +84,8 @@ class PersonalWorkflowTest(unittest.TestCase):
             wb.close()
 
     def test_predict_jra_from_sample(self):
-        """テストデータ使用: examples を test_fixture として中央競馬の通しを確認する。"""
-        report = workflow.run_predict("jra", TEST_DATE, force=True, sync_drive=False)
+        """テストデータ使用: allow_sample=True で中央競馬の通しを確認する。"""
+        report = self._predict("jra")
         self.assertIn("中央競馬", report)
         self.assertIn("中山", report)
         state = workflow.load_json(workflow.state_path("jra"))
@@ -88,7 +96,7 @@ class PersonalWorkflowTest(unittest.TestCase):
 
     def test_predict_nar_max_five(self):
         """テストデータ使用: 地方競馬は最大5レース。"""
-        report = workflow.run_predict("nar", TEST_DATE, force=True, sync_drive=False)
+        report = self._predict("nar")
         self.assertIn("地方競馬", report)
         self.assertIn("大井", report)
         state = workflow.load_json(workflow.state_path("nar"))
@@ -100,7 +108,7 @@ class PersonalWorkflowTest(unittest.TestCase):
 
     def test_predict_kyotei_from_sample(self):
         """テストデータ使用: 競艇の通しを確認する。"""
-        report = workflow.run_predict("kyotei", TEST_DATE, force=True, sync_drive=False)
+        report = self._predict("kyotei")
         self.assertIn("競艇", report)
         state = workflow.load_json(workflow.state_path("kyotei"))
         selected = [r for r in state["records"] if r["date"] == TEST_DATE and r.get("tickets")]
@@ -112,8 +120,8 @@ class PersonalWorkflowTest(unittest.TestCase):
         self.assertIn("未対応", workflow.run_predict("keirin", TEST_DATE, force=True, sync_drive=False))
 
     def test_learning_data_is_separated(self):
-        workflow.run_predict("jra", TEST_DATE, force=True, sync_drive=False)
-        workflow.run_predict("nar", TEST_DATE, force=True, sync_drive=False)
+        self._predict("jra")
+        self._predict("nar")
         workflow.apply_results_from_file(
             "jra", TEST_DATE, ROOT / "examples" / "jra_results.sample.json", sync_drive=False
         )
@@ -131,20 +139,20 @@ class PersonalWorkflowTest(unittest.TestCase):
         nar_learn = workflow.run_learning_report("nar")
         self.assertIn("100レースまでの残り", jra_learn)
         self.assertIn("100レースまでの残り", nar_learn)
-        self.assertTrue((ROOT / "data" / "jra" / "learning_report.json").exists())
-        self.assertTrue((ROOT / "data" / "nar" / "learning_report.json").exists())
+        self.assertTrue((workflow.ROOT / "data" / "jra" / "learning_report.json").exists())
+        self.assertTrue((workflow.ROOT / "data" / "nar" / "learning_report.json").exists())
         self.assertNotEqual(
             workflow.state_path("jra"),
             workflow.state_path("nar"),
         )
 
     def test_idempotent_predict_without_force(self):
-        workflow.run_predict("jra", TEST_DATE, force=True, sync_drive=False)
-        second = workflow.run_predict("jra", TEST_DATE, force=False, sync_drive=False)
+        self._predict("jra")
+        second = self._predict("jra", force=False)
         self.assertIn("二重登録防止", second)
 
     def test_apply_results_and_review(self):
-        workflow.run_predict("jra", TEST_DATE, force=True, sync_drive=False)
+        self._predict("jra")
         report = workflow.apply_results_from_file(
             "jra", TEST_DATE, ROOT / "examples" / "jra_results.sample.json", sync_drive=False
         )
