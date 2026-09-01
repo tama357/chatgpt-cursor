@@ -19,6 +19,10 @@ class KeirinWorkflowTest(unittest.TestCase):
         with (ROOT / "examples" / "predictions.example.json").open(encoding="utf-8") as handle:
             return json.load(handle)
 
+    def load_state(self):
+        with (ROOT / "state" / "state.example.json").open(encoding="utf-8") as handle:
+            return json.load(handle)
+
     def test_expand_pick(self):
         self.assertEqual(
             workflow.expand_pick("7-3-1456"),
@@ -55,6 +59,8 @@ class KeirinWorkflowTest(unittest.TestCase):
         self.assertIn("【予想1】", message)
         self.assertIn("計5点", message)
         self.assertEqual(message.count("【予想"), 3)
+        self.assertNotIn("prediction_score", message)
+        self.assertNotIn("penalties", message)
 
     def test_example_results_are_valid(self):
         with (ROOT / "examples" / "results.example.json").open(encoding="utf-8") as handle:
@@ -63,6 +69,54 @@ class KeirinWorkflowTest(unittest.TestCase):
         report = workflow.format_results(results)
         self.assertIn("当日的中率：66.67%", report)
         self.assertIn("当日回収率：130.67%", report)
+
+    def test_internal_state_example_is_valid(self):
+        completed = workflow.validate_state(self.load_state())
+        self.assertEqual(len(completed), 3)
+
+    def test_prediction_score_and_confidence_are_independent(self):
+        data = self.load_state()
+        data["days"][0]["predictions"][0]["confidence"] = "C"
+        completed = workflow.validate_state(data)
+        self.assertEqual(completed[0]["prediction_score"], 85)
+        self.assertEqual(completed[0]["confidence"], "C")
+
+    def test_rejects_incorrect_prediction_score(self):
+        data = self.load_state()
+        data["days"][0]["candidates"][0]["prediction_score"] = 84
+        with self.assertRaises(workflow.ValidationError):
+            workflow.validate_state(data)
+
+    def test_rejects_incorrect_low_quality_day(self):
+        data = self.load_state()
+        data["days"][0]["low_quality_day"] = True
+        with self.assertRaises(workflow.ValidationError):
+            workflow.validate_state(data)
+
+    def test_rejects_missing_primary_miss_reason(self):
+        data = self.load_state()
+        result = data["days"][0]["predictions"][1]["result"]
+        result["primary_miss_reason"] = None
+        with self.assertRaises(workflow.ValidationError):
+            workflow.validate_state(data)
+
+    def test_learning_report_contains_requested_dimensions(self):
+        report = workflow.build_learning_report(self.load_state())
+        self.assertIn("prediction_score_band_performance", report)
+        self.assertIn("low_quality_day_performance", report)
+        self.assertIn("scoring_item_relationships", report)
+        self.assertIn("first_place_candidate_count_performance", report)
+        self.assertIn("ticket_count_performance", report)
+        self.assertEqual(report["miss_reason_summary"]["axis_miss"]["primary_count"], 1)
+        self.assertEqual(report["miss_reason_summary"]["axis_miss"]["loss_amount"], 500)
+
+    def test_recommended_weights_are_proposal_only(self):
+        report = workflow.build_learning_report(self.load_state())
+        recommendation = report["recommended_weights"]
+        self.assertFalse(recommendation["auto_applied"])
+        self.assertFalse(report["weights_auto_applied"])
+        self.assertEqual(sum(recommendation["weights"].values()), 100)
+        self.assertEqual(report["initial_weights"], workflow.load_rules()["scoring_rubric"]["initial_weights"])
 
 
 if __name__ == "__main__":
