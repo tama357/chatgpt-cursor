@@ -50,7 +50,10 @@ def ensure_race_data(base_dir: Path, sport: str, target_date: str) -> tuple[list
         return races, f"✅ {label}: {len(races)}レース分の出走情報を確認（{path.name}）"
 
     if sport == "jra":
-        return [], f"ℹ {label}: 本日はJRA開催がありません。開催日のみ予想します。"
+        return [], (
+            f"【開催なし】{target_date} は中央競馬（JRA）の開催日ではありません。"
+            "開催日のみ予想します。"
+        )
     return [], (
         f"⚠ {label}: 自動取得に失敗しました。サンプルデータは使いません。\n"
         f"  CursorがWebで出走情報を調査し、`data/races/{sport}/{target_date}.json` を作成します。\n"
