@@ -1,9 +1,10 @@
 import importlib.util
-import shutil
 import sys
 import unittest
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from test_fixtures import install_test_races  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW_PATH = ROOT / "tools" / "workflow.py"
@@ -33,6 +34,8 @@ EXCEL_KEYS = (
 
 
 class PersonalWorkflowTest(unittest.TestCase):
+    """通し確認は examples を test_fixture として置く（テストデータ使用。本番フォールバックではない）。"""
+
     def setUp(self):
         self.data_dir = ROOT / "data"
         for sport in SPORTS:
@@ -44,8 +47,7 @@ class PersonalWorkflowTest(unittest.TestCase):
             races_dir.mkdir(parents=True, exist_ok=True)
             for f in races_dir.glob("*.json"):
                 f.unlink()
-            sample = ROOT / "examples" / f"{sport}_races.sample.json"
-            shutil.copy2(sample, races_dir / f"{TEST_DATE}.json")
+            install_test_races(ROOT, sport, TEST_DATE)
 
     def test_expand_pick(self):
         self.assertEqual(
@@ -74,6 +76,7 @@ class PersonalWorkflowTest(unittest.TestCase):
             wb.close()
 
     def test_predict_jra_from_sample(self):
+        """テストデータ使用: examples を test_fixture として中央競馬の通しを確認する。"""
         report = workflow.run_predict("jra", TEST_DATE, force=True, sync_drive=False)
         self.assertIn("中央競馬", report)
         self.assertIn("中山", report)
@@ -84,6 +87,7 @@ class PersonalWorkflowTest(unittest.TestCase):
         self.assertTrue(all(r.get("sport") == "jra" for r in selected))
 
     def test_predict_nar_max_five(self):
+        """テストデータ使用: 地方競馬は最大5レース。"""
         report = workflow.run_predict("nar", TEST_DATE, force=True, sync_drive=False)
         self.assertIn("地方競馬", report)
         self.assertIn("大井", report)
@@ -95,6 +99,7 @@ class PersonalWorkflowTest(unittest.TestCase):
         self.assertNotIn("中山", venues)
 
     def test_predict_kyotei_from_sample(self):
+        """テストデータ使用: 競艇の通しを確認する。"""
         report = workflow.run_predict("kyotei", TEST_DATE, force=True, sync_drive=False)
         self.assertIn("競艇", report)
         state = workflow.load_json(workflow.state_path("kyotei"))

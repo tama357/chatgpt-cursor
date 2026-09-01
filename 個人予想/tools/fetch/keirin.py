@@ -19,12 +19,14 @@ def fetch_races(
     base_dir: Path,
     target_date: str,
     *,
-    allow_sample: bool = True,
+    allow_sample: bool = False,
     try_auto: bool = True,
 ) -> list[dict[str, Any]]:
     path = race_data_path(base_dir, "keirin", target_date)
     if path.exists():
-        return load_race_data(base_dir, "keirin", target_date, allow_sample=False)
+        saved = load_race_data(base_dir, "keirin", target_date, allow_sample=False)
+        if saved:
+            return saved
 
     if try_auto:
         try:
@@ -34,5 +36,7 @@ def fetch_races(
         if races:
             save_races_json(base_dir, "keirin", target_date, races, source="keirin.jp")
             return races
+        if not allow_sample:
+            return []
 
     return load_race_data(base_dir, "keirin", target_date, allow_sample=allow_sample)

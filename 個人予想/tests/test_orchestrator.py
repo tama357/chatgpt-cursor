@@ -1,9 +1,10 @@
 import importlib.util
-import shutil
 import sys
 import unittest
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from test_fixtures import install_test_races  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools"))
@@ -21,11 +22,8 @@ TEST_DATE = "2026-09-01"
 
 
 def _copy_sample(sport: str) -> Path:
-    src = ROOT / "examples" / f"{sport}_races.sample.json"
-    dest = ROOT / "data" / "races" / sport / f"{TEST_DATE}.json"
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(src, dest)
-    return dest
+    """テストデータ使用。source は test_fixture（本番の sample フォールバックではない）。"""
+    return install_test_races(ROOT, sport, TEST_DATE)
 
 
 class OrchestratorTest(unittest.TestCase):

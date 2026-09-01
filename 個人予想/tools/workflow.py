@@ -90,7 +90,9 @@ def run_predict(sport: str, target_date: str, *, force: bool = False, sync_drive
 
     ensure_workbooks(ROOT)
     excel = ensure_workbooks(ROOT)
-    races = FETCHERS[sport].fetch_races(ROOT, target_date)
+    races = FETCHERS[sport].fetch_races(
+        ROOT, target_date, allow_sample=False, try_auto=True
+    )
     entry = excel[f"{sport}_entry"]
 
     if not races:
@@ -100,7 +102,7 @@ def run_predict(sport: str, target_date: str, *, force: bool = False, sync_drive
                 "中央競馬は開催日のみ予想します。"
             )
         return (
-            f"【出走情報未取得】{label}のレースデータがありません。\n"
+            f"【取得失敗】{label}の出走情報を取得できませんでした。サンプルデータは使いません。\n"
             f" Cursorが {ROOT}/data/races/{sport}/{target_date}.json を作成します。\n"
             f" 原田さんの手作業は不要です。"
         )

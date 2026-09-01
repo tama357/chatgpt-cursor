@@ -13,8 +13,10 @@ from pathlib import Path
 from openpyxl import load_workbook
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(ROOT / "tools"))
 from common.constants import EXCEL_FILENAMES, SPORTS  # noqa: E402
+from test_fixtures import install_test_races  # noqa: E402
 
 TEST_DATE = "2026-09-01"
 SHEET = "202609"
@@ -125,11 +127,15 @@ def main() -> int:
     copies = setup_copies()
     patch_workflow(workflow, copies)
     for sport in SPORTS:
-        dest = ROOT / "data" / "races" / sport / f"{TEST_DATE}.json"
-        dest.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(ROOT / "examples" / f"{sport}_races.sample.json", dest)
+        install_test_races(ROOT, sport, TEST_DATE)
 
-    report: dict[str, object] = {"date": TEST_DATE, "checks": [], "sports": list(SPORTS)}
+    report: dict[str, object] = {
+        "date": TEST_DATE,
+        "data_mode": "テストデータ使用",
+        "note": "examples を test_fixture として使う。本番の当日レースではない。",
+        "checks": [],
+        "sports": list(SPORTS),
+    }
     failed: list[str] = []
 
     predict_check: dict[str, object] = {"step": "predict-all"}

@@ -12,7 +12,7 @@ def fetch_races(
     base_dir: Path,
     target_date: str,
     *,
-    allow_sample: bool = True,
+    allow_sample: bool = False,
     try_auto: bool = True,
 ) -> list[dict[str, Any]]:
     return fetch_jra(

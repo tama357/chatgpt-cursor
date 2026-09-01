@@ -1,4 +1,7 @@
-"""中央競馬（JRA）出走取得。開催日のみ。地方競馬とは分離。"""
+"""中央競馬（JRA）出走取得。開催日のみ。地方競馬とは分離。
+
+本番の既定は allow_sample=False。examples へは落とさない。
+"""
 
 from __future__ import annotations
 
@@ -16,19 +19,20 @@ def fetch_races(
     base_dir: Path,
     target_date: str,
     *,
-    allow_sample: bool = True,
+    allow_sample: bool = False,
     try_auto: bool = True,
 ) -> list[dict[str, Any]]:
     path = race_data_path(base_dir, SPORT, target_date)
     if path.exists():
-        return load_race_data(base_dir, SPORT, target_date, allow_sample=False)
+        saved = load_race_data(base_dir, SPORT, target_date, allow_sample=False)
+        if saved:
+            return saved
 
     if try_auto:
         races = auto_fetch(target_date, circuit="jra")
         if races:
             save_races_json(base_dir, SPORT, target_date, races, source="netkeiba-jra")
             return races
-        # 開催なしも空リスト。サンプルへ落とさない（本番）。
         if not allow_sample:
             return []
 
