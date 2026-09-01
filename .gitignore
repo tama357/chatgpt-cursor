@@ -16,6 +16,10 @@ node_modules/
 __pycache__/
 *.py[cod]
 
+# 競輪予想の内部学習データ（公開リポジトリへ保存しない）
+競輪予想/state/*.json
+!競輪予想/state/*.example.json
+
 # OS / エディタ
 .DS_Store
 Thumbs.db
