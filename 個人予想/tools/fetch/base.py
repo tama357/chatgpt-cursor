@@ -6,12 +6,17 @@ from pathlib import Path
 from typing import Any
 
 
-def load_race_data(base_dir: Path, sport: str, target_date: str) -> list[dict[str, Any]]:
+def load_race_data(
+    base_dir: Path,
+    sport: str,
+    target_date: str,
+    *,
+    allow_sample: bool = True,
+) -> list[dict[str, Any]]:
     """レースデータを読み込む。優先: data/races/{sport}/{date}.json → examples"""
-    paths = [
-        base_dir / "data" / "races" / sport / f"{target_date}.json",
-        base_dir / "examples" / f"{sport}_races.sample.json",
-    ]
+    paths = [base_dir / "data" / "races" / sport / f"{target_date}.json"]
+    if allow_sample:
+        paths.append(base_dir / "examples" / f"{sport}_races.sample.json")
     for path in paths:
         if path.exists():
             with path.open(encoding="utf-8") as handle:

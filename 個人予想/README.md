@@ -1,9 +1,15 @@
-# 個人予想システム（手動入力版）
+# 個人予想システム
 
 原田さん個人利用の**競馬＋競輪** 予想・記録・集計・復習・学習システムです。
 
-> **ステータス: 手動入力版**  
-> レースデータJSON・結果JSONの手動配置が必要です。自動取得は未実装です。
+## 原田さんの使い方（チャットのみ）
+
+| やりたいこと | Cursor チャット |
+|--------------|-----------------|
+| 今日の予想 | **「今日の競馬と個人競輪を予想して」** |
+| 昨日の結果 | **「昨日の結果を確認して」** |
+
+JSON 作成やコマンド入力は **Cursor がすべて実行**します。
 
 ## 提出用との分離
 
@@ -12,64 +18,45 @@
 | `競輪予想/`（提出用） | Chatwork・Google Sheets提出 |
 | Drive `競艇_*.xlsx` | 競艇ファイルは競輪として使わない |
 
-## 参照するExcelファイル
+## Excelファイル
 
-### 競馬（Drive実ファイルと同仕様）
+### 競馬
 
 - `excel/競馬_予想記入シート_2026年9月.xlsx`
 - `excel/競馬_予想集計シート_2026年9月.xlsx`
 
-### 競輪（個人検証専用・新規）
+### 個人競輪（ChatGPT共有は CHATGPT_EXCEL.md 参照）
 
 - `excel/競輪_個人_予想記入シート.xlsx`
 - `excel/競輪_個人_予想集計シート.xlsx`
 
-### 共通シート名（12か月）
-
-`202609` `202610` `202611` `202612` `202701` `202702` `202703` `202704` `202705` `202706` `202707` `202708`
-
-実行日から対象月を判定し、上記 `YYYYMM` シートへ書き込みます。日別タブは作りません。
-
-## 買い目点数
-
-| 競技 | 目安 |
-|------|------|
-| 競馬 | 12〜30点（上限30） |
-| 競輪（個人） | 原則10点以内 |
-
-## セットアップ
+## セットアップ（初回のみ・Cursor が実行）
 
 ```bash
 pip install -r 個人予想/requirements.txt
 python3 個人予想/tools/workflow.py init-excel
 ```
 
-`init-excel` で実Excelを検査し、`excel/sheet_mapping.json` に列マッピングを出力します。
-
-## 実行コマンド
+## Cursor 内部コマンド
 
 ```bash
-# 予想（先に data/races/...json を配置）
-python3 個人予想/tools/workflow.py predict-keiba --date 2026-09-01
-python3 個人予想/tools/workflow.py predict-keirin --date 2026-09-01
+python3 個人予想/tools/workflow.py predict-today
+python3 個人予想/tools/workflow.py results-yesterday
 python3 個人予想/tools/workflow.py predict-all --date 2026-09-01
-
-# 結果（先に results JSON を apply-results で反映）
-python3 個人予想/tools/workflow.py apply-results keiba 個人予想/examples/keiba_results.sample.json --date 2026-09-01
 python3 個人予想/tools/workflow.py results-all --date 2026-09-01
-
-# 学習・成績
-python3 個人予想/tools/workflow.py learning-keiba
-python3 個人予想/tools/workflow.py learning-keirin
-python3 個人予想/tools/workflow.py report-all --date 2026-09-01
 ```
 
-## 手動作業（現状必須）
+## データ自動取得
 
-1. `data/races/keiba/YYYY-MM-DD.json` … 当日レース情報
-2. `data/races/keirin/YYYY-MM-DD.json` … 同上
-3. 結果確定後 … `apply-results` 用の結果JSON
-4. Excel実ファイルの更新はDrive側で行い、必要なら `excel/` へ再配置
+| 競技 | ソース |
+|------|--------|
+| 競馬 | netkeiba（失敗時は Cursor が Web 調査） |
+| 個人競輪 | keirin.jp 公式 JSON API |
+
+保存先:
+
+- 出走: `data/races/{keiba,keirin}/YYYY-MM-DD.json`
+- 結果: `data/results/{keiba,keirin}/YYYY-MM-DD.json`
 
 ## テスト
 
@@ -77,3 +64,8 @@ python3 個人予想/tools/workflow.py report-all --date 2026-09-01
 python3 -m unittest discover -s 個人予想/tests -v
 python3 -m unittest discover -s 競輪予想/tests -v
 ```
+
+## 詳細ルール
+
+- Cursor 実行手順: `個人予想/AGENTS.md`
+- ChatGPT 用 Excel パス: `個人予想/CHATGPT_EXCEL.md`

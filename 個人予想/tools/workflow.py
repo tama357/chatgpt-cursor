@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""個人利用 競馬・競輪 予想・記録・集計・復習・学習システム（手動入力版）。
+"""個人利用 競馬・競輪 予想・記録・集計・復習・学習システム。
 
 提出用競輪（競輪予想/）とは完全分離。外部送信は行わない。
-レースデータ・結果JSONは手動配置が必要。
+原田さんは Cursor チャットのみ。JSON作成・コマンド入力は Cursor が実行する。
 """
 
 from __future__ import annotations
@@ -42,6 +42,8 @@ from excel.io import write_predictions, write_results, write_summary  # noqa: E4
 from excel.templates import ensure_workbooks, init_excel  # noqa: E402
 from fetch import keiba as fetch_keiba  # noqa: E402
 from fetch import keirin as fetch_keirin  # noqa: E402
+from fetch.race_builder import load_races_from_file, save_races_json  # noqa: E402
+from orchestrator import run_predict_today, run_results_yesterday  # noqa: E402
 from predict.builder import build_prediction  # noqa: E402
 from predict.scorer import select_races  # noqa: E402
 
@@ -88,9 +90,9 @@ def run_predict(sport: str, target_date: str, *, force: bool = False) -> str:
 
     if not races:
         return (
-            f"【手動入力版】レースデータがありません。\n"
-            f" {ROOT}/data/races/{sport}/{target_date}.json を配置してください。\n"
-            f" テスト時は examples/{sport}_races.sample.json を参照します。"
+            f"【出走情報未取得】レースデータがありません。\n"
+            f" Cursorが {ROOT}/data/races/{sport}/{target_date}.json を作成します。\n"
+            f" 原田さんの手作業は不要です。"
         )
 
     selected, skipped = select_races(races, rules)
@@ -280,6 +282,12 @@ def init_excel_cmd() -> str:
     return init_excel(ROOT)
 
 
+def save_races_cmd(sport: str, target_date: str, races_file: Path) -> str:
+    races = load_races_from_file(races_file)
+    path = save_races_json(ROOT, sport, target_date, races, source="cursor_web")
+    return f"レースJSONを保存しました: {path}（{len(races)}レース）"
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     common = argparse.ArgumentParser(add_help=False)
@@ -288,6 +296,8 @@ def build_parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="command", required=True)
 
     for name in (
+        "predict-today",
+        "results-yesterday",
         "predict-keiba",
         "predict-keirin",
         "predict-all",
@@ -304,6 +314,10 @@ def build_parser() -> argparse.ArgumentParser:
     apply = sub.add_parser("apply-results", parents=[common])
     apply.add_argument("sport", choices=["keiba", "keirin"])
     apply.add_argument("results_file", type=Path)
+
+    save_races = sub.add_parser("save-races", parents=[common])
+    save_races.add_argument("sport", choices=["keiba", "keirin"])
+    save_races.add_argument("races_file", type=Path)
     return parser
 
 
@@ -313,6 +327,28 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if args.command == "init-excel":
             print(init_excel_cmd())
+        elif args.command == "predict-today":
+            print(
+                run_predict_today(
+                    ROOT,
+                    target_date=args.date,
+                    force=args.force,
+                    run_predict_fn=run_predict,
+                )
+            )
+        elif args.command == "results-yesterday":
+            print(
+                run_results_yesterday(
+                    ROOT,
+                    target_date=args.date,
+                    force=args.force,
+                    apply_results_fn=apply_results_from_file,
+                    run_results_fn=run_results,
+                    run_learning_fn=run_learning_report,
+                    find_day_records_fn=find_day_records,
+                    load_state_fn=lambda sport: load_json(state_path(sport)),
+                )
+            )
         elif args.command == "predict-keiba":
             print(run_predict("keiba", target_date, force=args.force))
         elif args.command == "predict-keirin":
@@ -337,6 +373,8 @@ def main(argv: list[str] | None = None) -> int:
             print(run_summary(target_date))
         elif args.command == "apply-results":
             print(apply_results_from_file(args.sport, target_date, args.results_file))
+        elif args.command == "save-races":
+            print(save_races_cmd(args.sport, target_date, args.races_file))
         return 0
     except (ValidationError, FileNotFoundError, json.JSONDecodeError) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)

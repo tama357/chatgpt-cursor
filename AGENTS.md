@@ -45,3 +45,11 @@
 ## AI利用方針
 
 ChatGPTを司令塔として使い、Cursorはコード編集・開発作業に使う。Geminiも利用する。AIの出力はそのまま納品せず、事実確認と自然な日本語への修正を行う。
+
+## 個人予想（競馬・個人競輪）
+
+原田さんは Cursor チャットだけで操作する。JSON・コマンドは Cursor が実行。
+
+- **予想**: 「今日の競馬と個人競輪を予想して」→ `python3 個人予想/tools/workflow.py predict-today`
+- **結果**: 「昨日の結果を確認して」→ `python3 個人予想/tools/workflow.py results-yesterday`
+- 詳細: `個人予想/AGENTS.md` / ChatGPT用Excel: `個人予想/CHATGPT_EXCEL.md`

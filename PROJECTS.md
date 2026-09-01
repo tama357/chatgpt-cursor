@@ -163,3 +163,4 @@
 - 2026-08-28：GitHub自動反映を設定した
 - 2026-08-28：統括チーフ V2 と Cursor cloud agent の連動を核にした
 - 2026-09-01：個人利用の競馬・競輪予想システム（個人予想/）を新規実装。Drive実Excel仕様（月別シート・1日5行）に合わせて手動入力版として修正
+- 2026-09-01：個人予想に predict-today / results-yesterday 自動化、keirin.jp自動取得、CHATGPT_EXCEL.md 追加（原田さんはチャットのみ）
