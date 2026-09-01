@@ -15,9 +15,12 @@ from pathlib import Path
 from typing import Any
 
 XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+JSON_MIME = "application/json"
 TOKEN_ENDPOINT = "https://oauth2.googleapis.com/token"
 DRIVE_UPLOAD_BASE = "https://www.googleapis.com/upload/drive/v3/files"
 DRIVE_API_BASE = "https://www.googleapis.com/drive/v3/files"
+# 既存ファイルの読み書きに必要。drive.file だけでは他人が作った6ファイルを更新できない。
+DRIVE_SCOPE = "https://www.googleapis.com/auth/drive"
 
 
 @dataclass
@@ -188,7 +191,7 @@ def _service_account_access_token(sa_data: dict[str, Any]) -> str:
     now = int(datetime.now(timezone.utc).timestamp())
     payload = {
         "iss": sa_data["client_email"],
-        "scope": "https://www.googleapis.com/auth/drive.file",
+        "scope": DRIVE_SCOPE,
         "aud": TOKEN_ENDPOINT,
         "iat": now,
         "exp": now + 3600,
@@ -220,7 +223,9 @@ def _drive_get_metadata(access_token: str, file_id: str) -> dict[str, Any]:
     return _parse_json(raw)
 
 
-def _drive_upload_replace(access_token: str, file_id: str, local_path: Path) -> dict[str, Any]:
+def _drive_upload_replace(
+    access_token: str, file_id: str, local_path: Path, *, mime: str = XLSX_MIME
+) -> dict[str, Any]:
     content = local_path.read_bytes()
     query = urllib.parse.urlencode({"uploadType": "media", "supportsAllDrives": "true"})
     url = f"{DRIVE_UPLOAD_BASE}/{file_id}?{query}"
@@ -229,7 +234,7 @@ def _drive_upload_replace(access_token: str, file_id: str, local_path: Path) -> 
         method="PATCH",
         headers={
             "Authorization": f"Bearer {access_token}",
-            "Content-Type": XLSX_MIME,
+            "Content-Type": mime,
             "Content-Length": str(len(content)),
         },
         body=content,
@@ -239,15 +244,22 @@ def _drive_upload_replace(access_token: str, file_id: str, local_path: Path) -> 
     return _parse_json(raw)
 
 
-def _drive_create(access_token: str, folder_id: str, title: str, local_path: Path) -> dict[str, Any]:
+def _drive_create(
+    access_token: str,
+    folder_id: str,
+    title: str,
+    local_path: Path,
+    *,
+    mime: str = JSON_MIME,
+) -> dict[str, Any]:
     content = local_path.read_bytes()
-    metadata = json.dumps({"name": title, "parents": [folder_id], "mimeType": XLSX_MIME}).encode("utf-8")
+    metadata = json.dumps({"name": title, "parents": [folder_id], "mimeType": mime}).encode("utf-8")
     boundary = "cursor_personal_predict_boundary"
     body = (
         f"--{boundary}\r\n"
         f"Content-Type: application/json; charset=UTF-8\r\n\r\n".encode("utf-8")
         + metadata
-        + f"\r\n--{boundary}\r\nContent-Type: {XLSX_MIME}\r\n\r\n".encode("utf-8")
+        + f"\r\n--{boundary}\r\nContent-Type: {mime}\r\n\r\n".encode("utf-8")
         + content
         + f"\r\n--{boundary}--\r\n".encode("utf-8")
     )
@@ -320,19 +332,11 @@ def sync_excel_files(
 
         try:
             file_id = spec.get("drive_file_id")
-            if file_id:
-                uploaded = _drive_upload_replace(token, str(file_id), local_path)
-            else:
-                uploaded = _drive_create(
-                    token,
-                    str(config["folder_id"]),
-                    str(spec.get("drive_title", local_name)),
-                    local_path,
+            if not file_id:
+                raise RuntimeError(
+                    "既存ExcelのDrive IDがありません。同名ファイルの新規作成はしません。"
                 )
-                file_id = uploaded.get("id")
-                spec["drive_file_id"] = file_id
-                config["files"][key] = spec
-                save_drive_config(base_dir, config)
+            uploaded = _drive_upload_replace(token, str(file_id), local_path)
 
             meta = _drive_get_metadata(token, str(file_id))
             if meta.get("trashed"):
@@ -404,3 +408,238 @@ def register_mcp_upload_result(
 
 def encode_file_base64(path: Path) -> str:
     return base64.b64encode(path.read_bytes()).decode("ascii")
+
+
+def _drive_download(access_token: str, file_id: str) -> bytes:
+    url = f"{DRIVE_API_BASE}/{file_id}?alt=media&supportsAllDrives=true"
+    status, raw = _http_request(url, headers={"Authorization": f"Bearer {access_token}"})
+    if status != 200:
+        raise RuntimeError(f"Drive download 失敗 HTTP {status}")
+    return raw
+
+
+def _drive_find_in_folder(access_token: str, folder_id: str, name: str) -> str | None:
+    query = urllib.parse.quote(
+        f"'{folder_id}' in parents and name = '{name}' and trashed = false"
+    )
+    url = f"{DRIVE_API_BASE}?q={query}&fields=files(id,name)&supportsAllDrives=true&includeItemsFromAllDrives=true"
+    status, raw = _http_request(url, headers={"Authorization": f"Bearer {access_token}"})
+    if status != 200:
+        raise RuntimeError(f"Drive search 失敗 HTTP {status}")
+    files = _parse_json(raw).get("files") or []
+    if not files:
+        return None
+    return str(files[0]["id"])
+
+
+def verify_excel_readable(
+    base_dir: Path, *, access_token: str | None = None
+) -> DriveSyncReport:
+    """既存6ファイルを読み取りだけ確認する。書き込み・新規作成はしない。"""
+    config = load_drive_config(base_dir)
+    token = access_token or _get_access_token(base_dir)
+    report = DriveSyncReport()
+    for key, spec in config.get("files", {}).items():
+        result = FileSyncResult(
+            key=key,
+            local_name=spec.get("local_name", key),
+            local_path=base_dir / "excel" / spec.get("local_name", key),
+            drive_file_id=spec.get("drive_file_id"),
+            status="pending",
+            message="",
+        )
+        report.attempted += 1
+        file_id = spec.get("drive_file_id")
+        if not file_id:
+            result.status = "failed"
+            result.message = "Drive IDがありません"
+            report.failed += 1
+            report.results.append(result)
+            continue
+        try:
+            meta = _drive_get_metadata(token, str(file_id))
+            if meta.get("trashed"):
+                raise RuntimeError("ゴミ箱にあります")
+            result.drive_file_id = str(meta.get("id") or file_id)
+            result.drive_size = int(meta.get("size", 0) or 0)
+            result.drive_md5 = meta.get("md5Checksum")
+            result.drive_modified_time = meta.get("modifiedTime")
+            result.drive_view_url = meta.get("webViewLink")
+            name = str(meta.get("name") or "")
+            if name and name != spec.get("local_name") and name != spec.get("drive_title"):
+                result.status = "failed"
+                result.message = f"Drive上の名前が一致しません: {name}"
+                report.failed += 1
+            else:
+                result.status = "success"
+                result.message = f"読み取り確認: {name or spec.get('local_name')} size={result.drive_size}"
+                report.succeeded += 1
+        except Exception as exc:  # noqa: BLE001
+            result.status = "failed"
+            result.message = str(exc)
+            report.failed += 1
+        report.results.append(result)
+    return report
+
+
+def pull_excel_files(
+    base_dir: Path, *, keys: list[str] | None = None, access_token: str | None = None
+) -> DriveSyncReport:
+    """既存6ファイルをID指定でダウンロード。無い場合は作らない。"""
+    config = load_drive_config(base_dir)
+    excel_dir = base_dir / "excel"
+    excel_dir.mkdir(parents=True, exist_ok=True)
+    token = access_token or _get_access_token(base_dir)
+    report = DriveSyncReport()
+    target_keys = keys or list(config.get("files", {}).keys())
+    for key in target_keys:
+        spec = config.get("files", {}).get(key)
+        if not spec:
+            continue
+        local_path = excel_dir / spec["local_name"]
+        result = FileSyncResult(
+            key=key,
+            local_name=spec["local_name"],
+            local_path=local_path,
+            drive_file_id=spec.get("drive_file_id"),
+            status="pending",
+            message="",
+        )
+        report.attempted += 1
+        file_id = spec.get("drive_file_id")
+        if not file_id:
+            result.status = "failed"
+            result.message = "既存ExcelのDrive IDがありません。新規作成しません。"
+            report.failed += 1
+            report.results.append(result)
+            continue
+        try:
+            raw = _drive_download(token, str(file_id))
+            local_path.write_bytes(raw)
+            meta = _drive_get_metadata(token, str(file_id))
+            result.local_size = len(raw)
+            result.local_md5 = md5_hex(raw)
+            result.drive_size = int(meta.get("size", 0) or 0)
+            result.drive_md5 = meta.get("md5Checksum")
+            result.drive_modified_time = meta.get("modifiedTime")
+            result.status = "success"
+            result.message = "Driveから取得しました"
+            report.succeeded += 1
+        except Exception as exc:  # noqa: BLE001
+            result.status = "failed"
+            result.message = str(exc)
+            report.failed += 1
+        report.results.append(result)
+    return report
+
+
+def _data_file_specs(config: dict[str, Any]) -> list[dict[str, str]]:
+    specs = config.get("data_files") or []
+    if isinstance(specs, dict):
+        out = []
+        for key, spec in specs.items():
+            item = {"key": key, **spec}
+            out.append(item)
+        return out
+    return list(specs)
+
+
+def pull_learning_data(
+    base_dir: Path, *, access_token: str | None = None
+) -> DriveSyncReport:
+    """競技別 state / 学習レポートをフォルダ内の固定名で取得する。"""
+    config = load_drive_config(base_dir)
+    token = access_token or _get_access_token(base_dir)
+    folder_id = str(config["folder_id"])
+    report = DriveSyncReport()
+    for spec in _data_file_specs(config):
+        local_path = base_dir / spec["local_path"]
+        result = FileSyncResult(
+            key=spec.get("key", spec.get("drive_name", "")),
+            local_name=spec.get("drive_name", local_path.name),
+            local_path=local_path,
+            drive_file_id=spec.get("drive_file_id"),
+            status="pending",
+            message="",
+        )
+        report.attempted += 1
+        try:
+            file_id = spec.get("drive_file_id") or _drive_find_in_folder(
+                token, folder_id, spec["drive_name"]
+            )
+            if not file_id:
+                result.status = "skipped"
+                result.message = "Drive上に未作成（初回は終了時に保存）"
+                report.skipped += 1
+                report.results.append(result)
+                continue
+            raw = _drive_download(token, str(file_id))
+            local_path.parent.mkdir(parents=True, exist_ok=True)
+            local_path.write_bytes(raw)
+            result.drive_file_id = str(file_id)
+            result.local_size = len(raw)
+            result.status = "success"
+            result.message = "学習データを取得しました"
+            report.succeeded += 1
+        except Exception as exc:  # noqa: BLE001
+            result.status = "failed"
+            result.message = str(exc)
+            report.failed += 1
+        report.results.append(result)
+    return report
+
+
+def push_learning_data(
+    base_dir: Path, *, access_token: str | None = None
+) -> DriveSyncReport:
+    """競技別 state / 学習レポートを保存。Excel 6ファイルは作らない。"""
+    config = load_drive_config(base_dir)
+    token = access_token or _get_access_token(base_dir)
+    folder_id = str(config["folder_id"])
+    report = DriveSyncReport()
+    for spec in _data_file_specs(config):
+        local_path = base_dir / spec["local_path"]
+        result = FileSyncResult(
+            key=spec.get("key", spec.get("drive_name", "")),
+            local_name=spec.get("drive_name", local_path.name),
+            local_path=local_path,
+            drive_file_id=spec.get("drive_file_id"),
+            status="pending",
+            message="",
+        )
+        report.attempted += 1
+        if not local_path.exists():
+            result.status = "skipped"
+            result.message = "ローカルに学習データがありません"
+            report.skipped += 1
+            report.results.append(result)
+            continue
+        try:
+            file_id = spec.get("drive_file_id") or _drive_find_in_folder(
+                token, folder_id, spec["drive_name"]
+            )
+            if file_id:
+                _drive_upload_replace(token, str(file_id), local_path, mime=JSON_MIME)
+            else:
+                created = _drive_create(token, folder_id, spec["drive_name"], local_path)
+                file_id = created.get("id")
+            result.drive_file_id = str(file_id) if file_id else None
+            result.local_size = local_path.stat().st_size
+            result.status = "success"
+            result.message = "学習データを保存しました"
+            report.succeeded += 1
+        except Exception as exc:  # noqa: BLE001
+            result.status = "failed"
+            result.message = str(exc)
+            report.failed += 1
+        report.results.append(result)
+    return report
+
+
+def format_read_only_report(report: DriveSyncReport) -> str:
+    lines = ["## Google Drive 読み取り確認（書き込みなし）"]
+    for item in report.results:
+        mark = "✅" if item.status == "success" else "❌"
+        lines.append(f"{mark} {item.local_name} id={item.drive_file_id} {item.message}")
+    lines.append(f"\n成功 {report.succeeded} / 失敗 {report.failed} / 試行 {report.attempted}")
+    return "\n".join(lines)

@@ -31,24 +31,44 @@ JSON 作成やコマンド入力は **Cursor がすべて実行**します。
 
 各ファイルに `202609`〜`202708` の月別シートがあります。1日最大5レースです。
 
+## 毎日の自動実行（GitHub Actions）
+
+PCがオフでも動きます。時刻は日本時間です。
+
+| 日本時間 | 内容 |
+|----------|------|
+| 毎日 4:00 | 前日の正式結果、Excel集計、復習、学習 |
+| 毎日 6:00 | 当日の公式出走、最大5レースずつ予想、Excel記入 |
+
+定期実行は GitHub Actions Variable `PERSONAL_PREDICT_ENABLED=true` のときだけ動きます。
+
+手動の `verify-drive` と初期移行は、スイッチがオフでも使えます。4:00 / 6:00 は `true` のときだけ動きます。
+
+初期移行は **PC版 Cursor** から一度だけ行います。GitHub Actions の checkout には Windows ローカルの state が無いため、Actions 側の bootstrap は state なしでは失敗終了します。Driveの古いExcelは取得しません。
+
+最初の設定は `個人予想/DRIVE_SYNC.md` を見てください。秘密鍵は GitHub Secret にだけ置きます。
+
 ## Cursor 内部コマンド
 
 ```bash
 python3 個人予想/tools/workflow.py predict-today
 python3 個人予想/tools/workflow.py results-yesterday
-python3 個人予想/tools/workflow.py predict-all --date 2026-09-01
-python3 個人予想/tools/workflow.py results-all --date 2026-09-01
+python3 個人予想/tools/workflow.py verify-drive
+python3 個人予想/tools/workflow.py cloud-predict
+python3 個人予想/tools/workflow.py cloud-results
 ```
 
 `predict-all` は中央競馬・地方競馬・競艇の3種類です。
 
 ## データ自動取得
 
-| 区分 | ソース | 保存先 |
-|------|--------|--------|
-| 中央競馬 | netkeiba（JRA開催日のみ） | `data/races/jra` / `data/results/jra` / `data/jra` |
-| 地方競馬 | nar.netkeiba | `data/races/nar` / `data/results/nar` / `data/nar` |
-| 競艇 | boatrace.jp | `data/races/kyotei` / `data/results/kyotei` / `data/kyotei` |
+| 区分 | 出走 | 結果 | 保存先 |
+|------|------|------|--------|
+| 中央競馬 | race.netkeiba.com（開催日のみ。非開催は正常終了） | race.netkeiba.com / db.netkeiba.com の三連単。`race_id` が無い記録は取得失敗 | `data/races/jra` / `data/results/jra` / `data/jra` |
+| 地方競馬 | nar.netkeiba.com（取れなければこの競技だけ中止） | nar.netkeiba.com の三連単。取れなければ取得失敗 | `data/races/nar` / `data/results/nar` / `data/nar` |
+| 競艇 | boatrace.jp（取れなければこの競技だけ中止） | boatrace.jp の `raceresult`。取れなければ取得失敗 | `data/races/kyotei` / `data/results/kyotei` / `data/kyotei` |
+
+本番では examples / sample / test_fixture を使いません。推測では記入しません。
 
 ## テスト
 

@@ -10,9 +10,10 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from datetime import datetime
 from pathlib import Path
 from typing import Any
+
+from common.jst import today_str as jst_today_str
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools"))
@@ -47,11 +48,30 @@ from common.tickets import ValidationError, check_hit, count_tickets  # noqa: E4
 from excel.io import write_predictions, write_results, write_summary  # noqa: E402
 from excel.templates import ensure_workbooks, init_excel  # noqa: E402
 from excel.drive_sync import DriveAuthError, sync_excel_files  # noqa: E402
+from cloud_runner import (  # noqa: E402
+    CloudJobError,
+    record_fetch_failure,
+    run_bootstrap_cloud,
+    run_cloud_predict,
+    run_cloud_results,
+    run_verify_drive,
+)
 from fetch import jra as fetch_jra  # noqa: E402
 from fetch import nar as fetch_nar  # noqa: E402
 from fetch import kyotei as fetch_kyotei  # noqa: E402
-from fetch.race_builder import load_races_from_file, save_races_json  # noqa: E402
-from orchestrator import run_predict_today, run_results_yesterday  # noqa: E402
+from fetch.race_builder import (  # noqa: E402
+    is_official_result_file,
+    load_official_results,
+    load_races_from_file,
+    result_data_path,
+    save_races_json,
+)
+from orchestrator import (  # noqa: E402
+    _result_key,
+    ensure_result_data,
+    run_predict_today,
+    run_results_yesterday,
+)
 from predict.builder import build_prediction  # noqa: E402
 from predict.scorer import select_races  # noqa: E402
 
@@ -98,21 +118,38 @@ def run_predict(
 
     ensure_workbooks(ROOT)
     excel = ensure_workbooks(ROOT)
-    races = FETCHERS[sport].fetch_races(
-        ROOT, target_date, allow_sample=allow_sample, try_auto=try_auto
-    )
+    outcome_fn = getattr(FETCHERS[sport], "fetch_races_outcome", None)
+    if outcome_fn:
+        outcome = outcome_fn(ROOT, target_date, allow_sample=allow_sample, try_auto=try_auto)
+        races = list(outcome.get("races") or [])
+        status_code = outcome.get("status") or ("ok" if races else "fetch_failed")
+        fetch_error = outcome.get("error")
+    else:
+        races = FETCHERS[sport].fetch_races(
+            ROOT, target_date, allow_sample=allow_sample, try_auto=try_auto
+        )
+        status_code = "ok" if races else "fetch_failed"
+        fetch_error = None
     entry = excel[f"{sport}_entry"]
 
     if not races:
-        if sport == "jra":
+        if status_code == "fetch_failed":
+            record_fetch_failure(state, date=target_date, reason=fetch_error or "取得失敗")
+            save_json(state_path(sport), state)
             return (
-                f"【開催なし】{target_date} は中央競馬（JRA）の開催日ではありません。"
-                "中央競馬は開催日のみ予想します。"
+                f"【取得失敗】{label}の出走情報を取得できませんでした。サンプルデータは使いません。"
+                " この競技の予想は中止します。"
             )
+        if sport == "jra" or status_code == "no_meeting":
+            return (
+                f"【開催なし】{target_date} は{label}の開催日ではありません。"
+                + (" 中央競馬は開催日のみ予想します。" if sport == "jra" else "")
+            )
+        record_fetch_failure(state, date=target_date, reason="取得失敗")
+        save_json(state_path(sport), state)
         return (
-            f"【取得失敗】{label}の出走情報を取得できませんでした。サンプルデータは使いません。\n"
-            f" Cursorが {ROOT}/data/races/{sport}/{target_date}.json を作成します。\n"
-            f" 原田さんの手作業は不要です。"
+            f"【取得失敗】{label}の出走情報を取得できませんでした。サンプルデータは使いません。"
+            " この競技の予想は中止します。"
         )
 
     selected, skipped = select_races(races, rules)
@@ -186,16 +223,43 @@ def run_results(sport: str, target_date: str, *, force: bool = False, sync_drive
     if not day_records:
         return f"{target_date} の{label}予想記録がありません。先に予想を実行してください。"
 
-    pending = [r for r in day_records if not r.get("result")]
+    pending = [r for r in day_records if not (r.get("result") or {}).get("trifecta")]
     if pending:
+        fetched, _fetch_status = ensure_result_data(ROOT, sport, target_date, day_records)
+        official_path = result_data_path(ROOT, sport, target_date)
+        rows = fetched or (
+            load_official_results(official_path) if is_official_result_file(official_path) else []
+        )
+        if rows:
+            _apply_result_rows(state, target_date, rows)
+            save_json(state_path(sport), state)
+            day_records = [
+                r
+                for r in find_day_records(state, target_date)
+                if not r.get("skipped") and r.get("tickets")
+            ]
+            pending = [r for r in day_records if not (r.get("result") or {}).get("trifecta")]
+
+    pending_note = ""
+    if pending and not any((r.get("result") or {}).get("trifecta") for r in day_records):
         names = ", ".join(f"{r['venue']}{r['race']}R" for r in pending)
+        record_fetch_failure(state, date=target_date, reason=f"正式結果なし: {names}")
+        save_json(state_path(sport), state)
         return (
-            f"結果未確定のレースがあります: {names}\n"
-            f"推測で記載しません。 data/results/{sport}/{target_date}.json に"
-            f"正式結果を配置してから再実行してください。"
+            f"【取得失敗】{label}の正式結果を取得できませんでした: {names}\n"
+            "推測では記入しません。この競技の結果処理は中止します。"
+            " 処理済みにはしません。"
         )
 
-    if not force and is_processed(state, key, payload):
+    if pending:
+        names = ", ".join(f"{r['venue']}{r['race']}R" for r in pending)
+        record_fetch_failure(state, date=target_date, reason=f"一部未取得: {names}")
+        pending_note = (
+            f"\n\n【取得失敗・一部】未確定: {names}。"
+            " 処理済みにはしません。次回は未取得レースだけ再取得します。"
+        )
+
+    if not pending and not force and is_processed(state, key, payload):
         return f"⚠ 二重登録防止: {target_date} の{label}結果処理は済みです。--force で再実行可。"
 
     ensure_workbooks(ROOT)
@@ -208,27 +272,28 @@ def run_results(sport: str, target_date: str, *, force: bool = False, sync_drive
         result = record.get("result")
         if not result or not result.get("trifecta"):
             continue
-        review = analyze_review(record, result["trifecta"])
-        record["review"] = review
-        if result["status"] == "ハズレ" and not result.get("primary_miss_reason"):
-            result["primary_miss_reason"] = review.get("primary_miss_reason")
-            result["secondary_miss_reasons"] = review.get("secondary_miss_reasons", [])
-            result["close_miss"] = review.get("close_miss", False)
-        record["learning"] = {
-            "sport": sport,
-            "fetched_data": record.get("fetched_data"),
-            "prediction_score": record.get("prediction_score"),
-            "confidence": record.get("confidence"),
-            "axis": record.get("axis"),
-            "tickets": record.get("tickets"),
-            "ticket_count": record.get("ticket_count"),
-            "odds_band_median": record.get("odds_band_median"),
-            "result": result,
-            "review": review,
-            "prediction_logic_version": record.get("prediction_logic_version"),
-        }
-        validate_result_record(record)
-        upsert_record(state, record)
+        if not record.get("review"):
+            review = analyze_review(record, result["trifecta"])
+            record["review"] = review
+            if result["status"] == "ハズレ" and not result.get("primary_miss_reason"):
+                result["primary_miss_reason"] = review.get("primary_miss_reason")
+                result["secondary_miss_reasons"] = review.get("secondary_miss_reasons", [])
+                result["close_miss"] = review.get("close_miss", False)
+            record["learning"] = {
+                "sport": sport,
+                "fetched_data": record.get("fetched_data"),
+                "prediction_score": record.get("prediction_score"),
+                "confidence": record.get("confidence"),
+                "axis": record.get("axis"),
+                "tickets": record.get("tickets"),
+                "ticket_count": record.get("ticket_count"),
+                "odds_band_median": record.get("odds_band_median"),
+                "result": result,
+                "review": review,
+                "prediction_logic_version": record.get("prediction_logic_version"),
+            }
+            validate_result_record(record)
+            upsert_record(state, record)
         result_items.append(record)
 
     sheet1 = write_results(
@@ -237,8 +302,11 @@ def run_results(sport: str, target_date: str, *, force: bool = False, sync_drive
         [{"number": r["number"], "result": r["result"], "ticket_count": r["ticket_count"]} for r in result_items],
     )
     sheet2 = write_summary(summary, target_date, result_items)
-    mark_processed(state, key, payload)
-    save_json(state_path(sport), state)
+    if pending:
+        save_json(state_path(sport), state)
+    else:
+        mark_processed(state, key, payload)
+        save_json(state_path(sport), state)
 
     base_report = format_result_report(
         sport_label=label,
@@ -247,25 +315,21 @@ def run_results(sport: str, target_date: str, *, force: bool = False, sync_drive
         all_records=get_records(state, with_result=True),
         sheet_status=f"{sheet1}\n{sheet2}",
     )
+    if pending:
+        base_report += pending_note
     if sync_drive:
         return base_report + "\n\n" + sync_drive_cmd(keys=SPORT_EXCEL_KEYS[sport])
     return base_report
 
 
-def apply_results_from_file(
-    sport: str, target_date: str, results_file: Path, *, sync_drive: bool = True
-) -> str:
-    """結果JSONをstateへ反映してから run_results を実行。"""
-    state = load_json(state_path(sport))
-    with results_file.open(encoding="utf-8") as handle:
-        data = json.load(handle)
-    results = data.get("results", [])
-    by_race = {(r.get("venue"), r.get("race")): r for r in results}
-
+def _apply_result_rows(state: dict[str, Any], target_date: str, results: list[dict[str, Any]]) -> None:
+    by_race = {_result_key(r): r for r in results}
     for record in find_day_records(state, target_date):
         if record.get("skipped"):
             continue
-        key = (record.get("venue"), record.get("race"))
+        if (record.get("result") or {}).get("trifecta"):
+            continue
+        key = _result_key(record)
         if key not in by_race:
             continue
         raw = by_race[key]
@@ -286,6 +350,16 @@ def apply_results_from_file(
             "scenario_realized": raw.get("scenario_realized"),
         }
         upsert_record(state, record)
+
+
+def apply_results_from_file(
+    sport: str, target_date: str, results_file: Path, *, sync_drive: bool = True
+) -> str:
+    """結果JSONをstateへ反映してから run_results を実行。"""
+    state = load_json(state_path(sport))
+    with results_file.open(encoding="utf-8") as handle:
+        data = json.load(handle)
+    _apply_result_rows(state, target_date, data.get("results", []))
     save_json(state_path(sport), state)
     return run_results(sport, target_date, sync_drive=sync_drive)
 
@@ -362,8 +436,18 @@ def build_parser() -> argparse.ArgumentParser:
         "report-all",
         "init-excel",
         "sync-drive",
+        "verify-drive",
+        "cloud-predict",
+        "cloud-results",
     ):
         sub.add_parser(name, parents=[common])
+
+    bootstrap = sub.add_parser("bootstrap-cloud", parents=[common])
+    bootstrap.add_argument(
+        "--i-confirm-bootstrap",
+        action="store_true",
+        help="原田さんの明示許可があるときだけ付ける。Driveから古いExcelは取得しない。",
+    )
 
     apply = sub.add_parser("apply-results", parents=[common])
     apply.add_argument("sport", choices=list(SPORTS))
@@ -377,12 +461,40 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    target_date = args.date or datetime.now().strftime("%Y-%m-%d")
+    target_date = args.date or jst_today_str()
     try:
         if args.command == "init-excel":
             print(init_excel_cmd())
         elif args.command == "sync-drive":
             print(sync_drive_cmd())
+        elif args.command == "verify-drive":
+            print(run_verify_drive(ROOT))
+        elif args.command == "bootstrap-cloud":
+            print(run_bootstrap_cloud(ROOT, confirm=bool(args.i_confirm_bootstrap)))
+        elif args.command == "cloud-predict":
+            print(
+                run_cloud_predict(
+                    ROOT,
+                    target_date=args.date,
+                    force=args.force,
+                    run_predict_today_fn=run_predict_today,
+                    run_predict_fn=run_predict,
+                )
+            )
+        elif args.command == "cloud-results":
+            print(
+                run_cloud_results(
+                    ROOT,
+                    target_date=args.date,
+                    force=args.force,
+                    run_results_yesterday_fn=run_results_yesterday,
+                    apply_results_fn=apply_results_from_file,
+                    run_results_fn=run_results,
+                    run_learning_fn=run_learning_report,
+                    find_day_records_fn=find_day_records,
+                    load_state_fn=lambda sport: load_json(state_path(sport)),
+                )
+            )
         elif args.command == "predict-today":
             print(
                 run_predict_today(
@@ -434,6 +546,12 @@ def main(argv: list[str] | None = None) -> int:
         elif args.command == "save-races":
             print(save_races_cmd(args.sport, target_date, args.races_file))
         return 0
+    except CloudJobError as exc:
+        print(str(exc))
+        return 1
+    except DriveAuthError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 1
     except (ValidationError, FileNotFoundError, json.JSONDecodeError) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 1

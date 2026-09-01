@@ -356,7 +356,9 @@ def _build_candidate(
     }
 
 
-def _fetch_one_race(date_str: str, venue: str, meta: dict[str, Any]) -> dict[str, Any] | None:
+def _fetch_one_race(
+    date_str: str, venue: str, meta: dict[str, Any], *, light: bool = True
+) -> dict[str, Any] | None:
     jcd, hd, rno = meta["jcd"], meta["hd"], meta["rno"]
     racelist = _safe_fetch(f"{BASE}/racelist?rno={rno}&jcd={jcd}&hd={hd}")
     if not racelist:
@@ -364,10 +366,17 @@ def _fetch_one_race(date_str: str, venue: str, meta: dict[str, Any]) -> dict[str
     entries = parse_racelist_entries(racelist)
     if len(entries) < 6:
         return None
-    before = _safe_fetch(f"{BASE}/beforeinfo?rno={rno}&jcd={jcd}&hd={hd}")
-    exhibition = parse_beforeinfo(before) if before else {}
-    odds_html = _safe_fetch(f"{BASE}/odds3t?rno={rno}&jcd={jcd}&hd={hd}")
-    odds = parse_odds3t(odds_html) if odds_html else []
+    from fetch.base import is_dummy_entry_name
+
+    if any(is_dummy_entry_name(e.get("name")) for e in entries):
+        return None
+    exhibition: dict[int, dict[str, Any]] = {}
+    odds: list[dict[str, Any]] = []
+    if not light:
+        before = _safe_fetch(f"{BASE}/beforeinfo?rno={rno}&jcd={jcd}&hd={hd}")
+        exhibition = parse_beforeinfo(before) if before else {}
+        odds_html = _safe_fetch(f"{BASE}/odds3t?rno={rno}&jcd={jcd}&hd={hd}")
+        odds = parse_odds3t(odds_html) if odds_html else []
     if not venue:
         venue = parse_venue_name(racelist, jcd)
     return _build_candidate(
@@ -380,21 +389,33 @@ def _fetch_one_race(date_str: str, venue: str, meta: dict[str, Any]) -> dict[str
     )
 
 
-def fetch_races_for_date(date_str: str) -> list[dict[str, Any]]:
+def fetch_races_outcome(date_str: str, *, light: bool = True) -> dict[str, Any]:
     hd = _hd(date_str)
+    index = _safe_fetch(f"{BASE}/index?hd={hd}")
+    if not index:
+        index = _safe_fetch(f"{BASE}/index")
+    if not index:
+        return {"races": [], "status": "fetch_failed", "error": "boatrace.jp の開催一覧を取得できませんでした"}
     venues = fetch_today_venues(hd)
     if not venues:
-        return []
+        return {"races": [], "status": "no_meeting", "error": None}
     jobs: list[tuple[str, dict[str, Any]]] = []
     for jcd, venue in venues:
         index_html = _safe_fetch(f"{BASE}/raceindex?jcd={jcd}&hd={hd}")
         if not index_html:
             continue
-        for meta in parse_raceindex(index_html, jcd, hd):
+        metas = parse_raceindex(index_html, jcd, hd)
+        picked = metas[-4:] if len(metas) > 4 else metas
+        for meta in picked:
             jobs.append((venue, meta))
+    if not jobs:
+        return {"races": [], "status": "fetch_failed", "error": "各場の番組表を取得できませんでした"}
     races: list[dict[str, Any]] = []
     with ThreadPoolExecutor(max_workers=8) as pool:
-        futs = [pool.submit(_fetch_one_race, date_str, venue, meta) for venue, meta in jobs]
+        futs = [
+            pool.submit(_fetch_one_race, date_str, venue, meta, light=light)
+            for venue, meta in jobs
+        ]
         for fut in as_completed(futs):
             try:
                 item = fut.result()
@@ -403,7 +424,13 @@ def fetch_races_for_date(date_str: str) -> list[dict[str, Any]]:
             if item:
                 races.append(item)
     races.sort(key=lambda r: (r.get("venue", ""), r.get("race", 0)))
-    return races
+    if not races:
+        return {"races": [], "status": "fetch_failed", "error": "出走表の公式情報を解析できませんでした"}
+    return {"races": races, "status": "ok", "error": None}
+
+
+def fetch_races_for_date(date_str: str) -> list[dict[str, Any]]:
+    return list(fetch_races_outcome(date_str).get("races") or [])
 
 
 def fetch_result_trifecta(jcd: str, rno: int, hd: str) -> dict[str, Any] | None:

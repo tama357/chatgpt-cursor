@@ -68,6 +68,19 @@ def _build_keirin_tickets(
     return tickets
 
 
+def _bettable_entries(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    for entry in entries:
+        raw = entry.get("number")
+        try:
+            num = int(raw)
+        except (TypeError, ValueError):
+            continue
+        if 1 <= num <= 9:
+            out.append({**entry, "number": num})
+    return out
+
+
 def _build_keiba_tickets(
     axis: str,
     rivals: list[str],
@@ -75,6 +88,10 @@ def _build_keiba_tickets(
     min_pts: int,
     max_pts: int,
 ) -> list[dict[str, str]]:
+    entries = _bettable_entries(entries)
+    if axis not in {str(e["number"]) for e in entries}:
+        axis = str(entries[0]["number"]) if entries else "1"
+        rivals = _top_rivals(entries, axis)
     thirds = [
         n
         for n in _third_pool(entries, axis, rivals)
@@ -124,18 +141,20 @@ def _next_digit(
 
 
 def _top_rivals(entries: list[dict[str, Any]], axis: str) -> list[str]:
+    entries = _bettable_entries(entries)
     ranked = sorted(
         [e for e in entries if str(e.get("number")) != axis],
-        key=lambda e: (-float(e.get("rating", e.get("score", 0))), str(e.get("number"))),
+        key=lambda e: (-float(e.get("rating", e.get("score", 0))), int(e.get("number", 99))),
     )
     return [str(e.get("number")) for e in ranked[:2]] or ["2", "3"]
 
 
 def _third_pool(entries: list[dict[str, Any]], axis: str, rivals: list[str]) -> list[str]:
+    entries = _bettable_entries(entries)
     exclude = {axis, *rivals}
     nums = sorted(
         [str(e.get("number")) for e in entries if str(e.get("number")) not in exclude],
-        key=lambda n: n,
+        key=lambda n: int(n),
     )
     return nums[:8] or ["3", "4", "5", "6", "7", "8"]
 

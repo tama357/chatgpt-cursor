@@ -63,9 +63,19 @@ class DataIsolationTest(ProductionDataGuardMixin, unittest.TestCase):
         self.assertIn("data/keiba/state.json", before)
 
         with (
-            patch.object(fetch_jra, "auto_fetch", return_value=[]),
-            patch.object(fetch_nar, "auto_fetch", return_value=[]),
-            patch.object(fetch_kyotei, "auto_fetch", return_value=[]),
+            patch.object(
+                fetch_jra, "auto_outcome", return_value={"races": [], "status": "no_meeting"}
+            ),
+            patch.object(
+                fetch_nar,
+                "auto_outcome",
+                return_value={"races": [], "status": "fetch_failed", "error": "fail"},
+            ),
+            patch.object(
+                fetch_kyotei,
+                "auto_outcome",
+                return_value={"races": [], "status": "fetch_failed", "error": "fail"},
+            ),
         ):
             fetch_jra.fetch_races(sandbox, TEST_DATE, allow_sample=False, try_auto=True)
             fetch_nar.fetch_races(sandbox, TEST_DATE, allow_sample=False, try_auto=True)
