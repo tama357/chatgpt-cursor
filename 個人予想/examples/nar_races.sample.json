@@ -1,0 +1,120 @@
+{
+  "date": "2026-09-01",
+  "source": "sample",
+  "note": "地方競馬（NAR）テスト用架空データ。実際の投票には使用しません。",
+  "races": [
+    {
+      "venue": "大井",
+      "race": 11,
+      "close_time": "20:40",
+      "axis": "3",
+      "entries": [
+        {"number": 1, "name": "地方1", "rating": 52, "popularity": 3},
+        {"number": 2, "name": "地方2", "rating": 48, "popularity": 5},
+        {"number": 3, "name": "地方3", "rating": 58, "popularity": 1},
+        {"number": 4, "name": "地方4", "rating": 50, "popularity": 4},
+        {"number": 5, "name": "地方5", "rating": 45, "popularity": 6},
+        {"number": 6, "name": "地方6", "rating": 47, "popularity": 2}
+      ],
+      "factors": {
+        "recent_form": 13, "distance_course_fit": 14, "surface_fit": 9, "track_condition": 8,
+        "draw_position": 7, "running_style": 9, "scenario_clarity": 11, "jockey": 7,
+        "weight_class": 6, "popularity_odds": 4, "rest_days": 4, "change_risk": 4
+      },
+      "penalties": [],
+      "notes": "3番が近走好調。",
+      "scenario": "3番先行、4番差し。",
+      "rivals": ["4", "1"]
+    },
+    {
+      "venue": "川崎",
+      "race": 10,
+      "close_time": "20:10",
+      "axis": "1",
+      "entries": [
+        {"number": 1, "rating": 57}, {"number": 2, "rating": 51},
+        {"number": 3, "rating": 49}, {"number": 4, "rating": 46},
+        {"number": 5, "rating": 44}, {"number": 6, "rating": 42}
+      ],
+      "factors": {
+        "recent_form": 12, "distance_course_fit": 13, "surface_fit": 8, "track_condition": 8,
+        "draw_position": 7, "running_style": 8, "scenario_clarity": 10, "jockey": 7,
+        "weight_class": 6, "popularity_odds": 4, "rest_days": 4, "change_risk": 3
+      },
+      "penalties": [],
+      "rivals": ["2", "3"]
+    },
+    {
+      "venue": "園田",
+      "race": 12,
+      "close_time": "16:25",
+      "axis": "5",
+      "entries": [
+        {"number": 1, "rating": 50}, {"number": 2, "rating": 48},
+        {"number": 3, "rating": 47}, {"number": 4, "rating": 46},
+        {"number": 5, "rating": 56}, {"number": 6, "rating": 44}
+      ],
+      "factors": {
+        "recent_form": 12, "distance_course_fit": 12, "surface_fit": 8, "track_condition": 7,
+        "draw_position": 6, "running_style": 8, "scenario_clarity": 9, "jockey": 6,
+        "weight_class": 6, "popularity_odds": 4, "rest_days": 5, "change_risk": 4
+      },
+      "penalties": [],
+      "rivals": ["1", "2"]
+    },
+    {
+      "venue": "浦和",
+      "race": 9,
+      "close_time": "16:00",
+      "axis": "2",
+      "entries": [
+        {"number": 1, "rating": 50}, {"number": 2, "rating": 55},
+        {"number": 3, "rating": 49}, {"number": 4, "rating": 47},
+        {"number": 5, "rating": 45}, {"number": 6, "rating": 43}
+      ],
+      "factors": {
+        "recent_form": 11, "distance_course_fit": 12, "surface_fit": 8, "track_condition": 8,
+        "draw_position": 7, "running_style": 8, "scenario_clarity": 9, "jockey": 6,
+        "weight_class": 5, "popularity_odds": 4, "rest_days": 4, "change_risk": 3
+      },
+      "penalties": [],
+      "rivals": ["1", "3"]
+    },
+    {
+      "venue": "船橋",
+      "race": 8,
+      "close_time": "15:30",
+      "axis": "4",
+      "entries": [
+        {"number": 1, "rating": 49}, {"number": 2, "rating": 48},
+        {"number": 3, "rating": 47}, {"number": 4, "rating": 54},
+        {"number": 5, "rating": 45}, {"number": 6, "rating": 44}
+      ],
+      "factors": {
+        "recent_form": 11, "distance_course_fit": 11, "surface_fit": 8, "track_condition": 7,
+        "draw_position": 7, "running_style": 8, "scenario_clarity": 9, "jockey": 6,
+        "weight_class": 5, "popularity_odds": 4, "rest_days": 4, "change_risk": 3
+      },
+      "penalties": [],
+      "rivals": ["1", "2"]
+    },
+    {
+      "venue": "高知",
+      "race": 7,
+      "close_time": "21:10",
+      "axis": "6",
+      "entries": [
+        {"number": 1, "rating": 42}, {"number": 2, "rating": 41},
+        {"number": 3, "rating": 40}, {"number": 4, "rating": 43},
+        {"number": 5, "rating": 39}, {"number": 6, "rating": 44}
+      ],
+      "factors": {
+        "recent_form": 8, "distance_course_fit": 7, "surface_fit": 6, "track_condition": 6,
+        "draw_position": 5, "running_style": 6, "scenario_clarity": 5, "jockey": 5,
+        "weight_class": 4, "popularity_odds": 3, "rest_days": 3, "change_risk": 3
+      },
+      "penalties": [{"code": "data_shortage", "points": 10}],
+      "notes": "6レース目は選定外想定（予想しやすさ不足）"
+    }
+  ]
+}

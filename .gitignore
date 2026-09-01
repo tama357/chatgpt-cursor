@@ -24,6 +24,8 @@ __pycache__/
 個人予想/data/**/*
 !個人予想/data/.gitkeep
 個人予想/excel/_e2e_test/
+個人予想/.drive/
+個人予想/tests/e2e_excel_test_report.json
 
 # OS / エディタ
 .DS_Store

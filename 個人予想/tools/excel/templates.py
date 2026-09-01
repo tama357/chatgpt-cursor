@@ -2,17 +2,13 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from excel.mapping import MONTH_SHEETS, write_mapping_cache
+from common.constants import EXCEL_FILENAMES, MONTH_SHEETS
+from excel.mapping import write_mapping_cache
 
 
 def ensure_workbooks(base_dir: Path) -> dict[str, Path]:
     excel_dir = base_dir / "excel"
-    files = {
-        "keiba_entry": excel_dir / "競馬_予想記入シート_2026年9月.xlsx",
-        "keiba_summary": excel_dir / "競馬_予想集計シート_2026年9月.xlsx",
-        "keirin_entry": excel_dir / "競輪_個人_予想記入シート.xlsx",
-        "keirin_summary": excel_dir / "競輪_個人_予想集計シート.xlsx",
-    }
+    files = {key: excel_dir / name for key, name in EXCEL_FILENAMES.items()}
     missing = [str(p) for p in files.values() if not p.exists()]
     if missing:
         raise FileNotFoundError(
@@ -31,7 +27,7 @@ def ensure_workbooks(base_dir: Path) -> dict[str, Path]:
 def init_excel(base_dir: Path) -> str:
     files = ensure_workbooks(base_dir)
     cache = write_mapping_cache(base_dir)
-    lines = ["Excel実ファイルを確認しました（手動入力版）:", ""]
+    lines = ["Excel実ファイルを確認しました（中央競馬・地方競馬・競艇）:", ""]
     for key, path in files.items():
         lines.append(f"- {key}: {path.name}")
     lines.append(f"- 列マッピング: {cache.name}")

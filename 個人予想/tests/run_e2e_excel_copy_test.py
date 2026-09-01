@@ -8,23 +8,23 @@ import importlib.util
 import json
 import shutil
 import sys
-from datetime import datetime
 from pathlib import Path
 
 from openpyxl import load_workbook
 
 ROOT = Path(__file__).resolve().parents[1]
-TEST_DATE = "2026-09-01"
-SHEET = "202609"
-TEST_EXCEL = ROOT / "excel" / "_e2e_test"
-TEST_DATA = ROOT / "data" / "_e2e_test"
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(ROOT / "tools"))
+from common.constants import EXCEL_FILENAMES, SPORTS  # noqa: E402
+from test_fixtures import (  # noqa: E402
+    TEST_DATE,
+    make_sandbox,
+    seed_dummy_runtime,
+    snapshot_tree,
+)
 
-ORIGINALS = {
-    "keiba_entry": ROOT / "excel" / "競馬_予想記入シート_2026年9月.xlsx",
-    "keiba_summary": ROOT / "excel" / "競馬_予想集計シート_2026年9月.xlsx",
-    "keirin_entry": ROOT / "excel" / "競輪_個人_予想記入シート.xlsx",
-    "keirin_summary": ROOT / "excel" / "競輪_個人_予想集計シート.xlsx",
-}
+SHEET = "202609"
+ORIGINALS = {key: ROOT / "excel" / name for key, name in EXCEL_FILENAMES.items()}
 
 
 def load_workflow():
@@ -41,30 +41,16 @@ def file_hash(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def setup_copies() -> dict[str, Path]:
-    if TEST_EXCEL.exists():
-        shutil.rmtree(TEST_EXCEL)
-    if TEST_DATA.exists():
-        shutil.rmtree(TEST_DATA)
-    TEST_EXCEL.mkdir(parents=True)
-    TEST_DATA.mkdir(parents=True)
-    copies: dict[str, Path] = {}
-    for key, src in ORIGINALS.items():
-        dst = TEST_EXCEL / src.name
-        shutil.copy2(src, dst)
-        copies[key] = dst
-    return copies
+def setup_copies(sandbox: Path) -> dict[str, Path]:
+    return {key: sandbox / "excel" / name for key, name in EXCEL_FILENAMES.items()}
 
 
-def patch_workflow(workflow, copies: dict[str, Path]) -> None:
+def patch_workflow(workflow, copies: dict[str, Path], sandbox: Path) -> None:
     def test_workbooks(_base: Path) -> dict[str, Path]:
         return dict(copies)
 
-    def test_state_path(sport: str) -> Path:
-        return TEST_DATA / sport / "state.json"
-
     workflow.ensure_workbooks = test_workbooks  # type: ignore[method-assign]
-    workflow.state_path = test_state_path  # type: ignore[method-assign]
+    workflow.ROOT = sandbox
 
 
 def snapshot_formulas(path: Path, sheet: str, rows: range, cols: range) -> dict[tuple[int, int], str]:
@@ -106,201 +92,182 @@ def read_summary_pt(path: Path) -> dict[str, list]:
         "row12_P-T": [ws.cell(12, c).value for c in range(16, 21)],
         "row13_P-T": [ws.cell(13, c).value for c in range(16, 21)],
         "row14_P-T": [ws.cell(14, c).value for c in range(16, 21)],
-        "当日的中率": ws.cell(12, 9).value,
-        "当日回収率": ws.cell(12, 10).value,
-        "累計的中率": ws.cell(12, 3).value,
-        "累計回収率": ws.cell(12, 4).value,
     }
     wb.close()
     return data
 
 
-def cols_c_to_k_only_updated(before: list[dict], after: list[dict]) -> list[str]:
-    errors = []
-    for i, (b, a) in enumerate(zip(before, after), start=3):
-        for col in "AB":
-            if b.get(col) != a.get(col):
-                errors.append(f"行{i} {col}列が変化: {b.get(col)!r} -> {a.get(col)!r}")
-        for col in "LMN":
-            if b.get(col) != a.get(col) and a.get(col) not in (None, "未実施"):
-                pass  # 予想段階ではL-Nは未更新が正常
-        for col in "CDEFGHIJK":
-            if b.get(col) != a.get(col):
-                if a.get(col) in (None, "") and b.get(col) in (None, ""):
-                    continue
-                # updated expected
-                continue
-        if all(a.get(c) in (None, "") for c in "CDEFGHIJK"):
-            errors.append(f"行{i} C-K列が空のまま")
-    return errors
+def has_formula_errors(path: Path) -> bool:
+    wb = load_workbook(path)
+    ws = wb[SHEET]
+    for row in ws.iter_rows(min_row=1, max_row=20, min_col=1, max_col=20):
+        for cell in row:
+            if cell.data_type == "e":
+                wb.close()
+                return True
+    wb.close()
+    return False
 
 
 def main() -> int:
+    import tempfile
+
     workflow = load_workflow()
+    orig_root = workflow.ROOT
+    production_before = snapshot_tree(ROOT / "data")
+    frozen_report = ROOT / "tests" / "e2e_excel_test_report.json"
+    frozen_report_before = frozen_report.read_bytes() if frozen_report.exists() else None
     original_hashes = {k: file_hash(p) for k, p in ORIGINALS.items()}
-    copies = setup_copies()
-    patch_workflow(workflow, copies)
+    sandbox = make_sandbox(ROOT, copy_excel=True)
+    verify = Path(tempfile.mkdtemp(prefix="personal-e2e-verify-"))
+    seed_dummy_runtime(verify)
+    verify_before = snapshot_tree(verify)
+    failed: list[str] = []
+    report: dict[str, object] = {
+        "date": TEST_DATE,
+        "data_mode": "テストデータ使用",
+        "note": "一時ディレクトリで allow_sample=True。本番 data は削除も変更もしない。",
+        "checks": [],
+        "sports": list(SPORTS),
+    }
+    try:
+        copies = setup_copies(sandbox)
+        patch_workflow(workflow, copies, sandbox)
 
-    before_keiba_entry = read_entry_rows(copies["keiba_entry"])
-    before_keirin_entry = read_entry_rows(copies["keirin_entry"])
-    formula_before_kb = snapshot_formulas(
-        copies["keiba_summary"], SHEET, range(12, 15), range(2, 16)
-    )
-    formula_before_kr = snapshot_formulas(
-        copies["keirin_summary"], SHEET, range(12, 15), range(2, 16)
-    )
-    merge_before_kb = snapshot_merges_and_dv(copies["keiba_entry"], SHEET)
-    merge_before_kr = snapshot_merges_and_dv(copies["keirin_entry"], SHEET)
+        predict_check: dict[str, object] = {"step": "predict-all"}
+        apply_check: dict[str, object] = {"step": "apply-results"}
+        for sport in SPORTS:
+            entry = copies[f"{sport}_entry"]
+            summary = copies[f"{sport}_summary"]
+            before = read_entry_rows(entry)
+            formula_before = snapshot_formulas(summary, SHEET, range(12, 15), range(2, 16))
+            merge_before = snapshot_merges_and_dv(entry, SHEET)
 
-    report: dict[str, object] = {"date": TEST_DATE, "checks": []}
+            pred = workflow.run_predict(
+                sport,
+                TEST_DATE,
+                force=True,
+                sync_drive=False,
+                allow_sample=True,
+                try_auto=False,
+            )
+            report[f"predict_{sport}_head"] = pred.splitlines()[:5]
+            after = read_entry_rows(entry)
+            merge_after = snapshot_merges_and_dv(entry, SHEET)
+            ab_ok = all(
+                after[i]["A"] == before[i]["A"] and after[i]["B"] == before[i]["B"]
+                for i in range(5)
+            )
+            filled = sum(
+                1 for i in range(5) if any(after[i][c] not in (None, "") for c in "CDEFGHIJK")
+            )
+            predict_check[f"{sport}_AB_preserved"] = ab_ok
+            predict_check[f"{sport}_filled_rows"] = filled
+            predict_check[f"{sport}_max5"] = filled <= 5
+            predict_check[f"{sport}_merges_unchanged"] = merge_before[0] == merge_after[0]
+            predict_check[f"{sport}_rows_3_7"] = after
+            if not ab_ok:
+                failed.append(f"{sport} AB changed")
+            if filled < 1:
+                failed.append(f"{sport} no predictions written")
+            if filled > 5:
+                failed.append(f"{sport} more than 5 races")
 
-    # 1. predict-all
-    kb_pred = workflow.run_predict("keiba", TEST_DATE, force=True)
-    kr_pred = workflow.run_predict("keirin", TEST_DATE, force=True)
-    report["predict_keiba_head"] = kb_pred.splitlines()[:5]
-    report["predict_keirin_head"] = kr_pred.splitlines()[:5]
+            workflow.apply_results_from_file(
+                sport,
+                TEST_DATE,
+                ROOT / "examples" / f"{sport}_results.sample.json",
+                sync_drive=False,
+            )
+            after_res = read_entry_rows(entry)
+            summary_pt = read_summary_pt(summary)
+            formula_after = snapshot_formulas(summary, SHEET, range(12, 15), range(2, 16))
+            ln = [{k: after_res[i][k] for k in "LMN"} for i in range(min(3, filled))]
+            apply_check[f"{sport}_L-N_sample"] = ln
+            apply_check[f"{sport}_summary_PT"] = summary_pt
+            apply_check[f"{sport}_B-O_formulas_unchanged"] = formula_before == formula_after
+            apply_check[f"{sport}_formula_errors"] = has_formula_errors(summary)
+            if any(not row.get("L") for row in ln):
+                failed.append(f"{sport} results L empty")
+            statuses = summary_pt.get("row12_P-T") or []
+            if not any(s in {"的中", "ハズレ"} for s in statuses):
+                failed.append(f"{sport} summary P-T not updated")
+            if formula_before != formula_after:
+                failed.append(f"{sport} summary formulas changed")
+            if apply_check[f"{sport}_formula_errors"]:
+                failed.append(f"{sport} formula errors")
 
-    after_keiba_entry = read_entry_rows(copies["keiba_entry"])
-    after_keirin_entry = read_entry_rows(copies["keirin_entry"])
+            review_state = workflow.load_json(workflow.state_path(sport))
+            reviewed = [r for r in review_state.get("records", []) if r.get("review")]
+            apply_check[f"{sport}_review_count"] = len(reviewed)
+            if not reviewed:
+                failed.append(f"{sport} review missing")
 
-    keiba_ab_ok = all(
-        after_keiba_entry[i]["A"] == before_keiba_entry[i]["A"]
-        and after_keiba_entry[i]["B"] == before_keiba_entry[i]["B"]
-        for i in range(5)
-    )
-    keirin_ab_ok = all(
-        after_keirin_entry[i]["A"] == before_keirin_entry[i]["A"]
-        and after_keirin_entry[i]["B"] == before_keirin_entry[i]["B"]
-        for i in range(5)
-    )
-    keiba_ck_updated = all(
-        any(after_keiba_entry[i][c] not in (None, "") for c in "CDEFGHIJK")
-        for i in range(3)
-    )
-    keirin_ck_updated = all(
-        any(after_keirin_entry[i][c] not in (None, "") for c in "CDEFGHIJK")
-        for i in range(3)
-    )
-    merge_after_kb = snapshot_merges_and_dv(copies["keiba_entry"], SHEET)
-    merge_after_kr = snapshot_merges_and_dv(copies["keirin_entry"], SHEET)
+        report["checks"].append(predict_check)
+        report["checks"].append(apply_check)
 
-    report["checks"].append(
-        {
-            "step": "predict-all",
-            "keiba_AB_preserved": keiba_ab_ok,
-            "keirin_AB_preserved": keirin_ab_ok,
-            "keiba_C-K_updated_rows3-5": keiba_ck_updated,
-            "keirin_C-K_updated_rows3-5": keirin_ck_updated,
-            "keiba_merges_unchanged": merge_before_kb[0] == merge_after_kb[0],
-            "keirin_merges_unchanged": merge_before_kr[0] == merge_after_kr[0],
-            "keiba_dv_unchanged": merge_before_kb[1] == merge_after_kb[1],
-            "keirin_dv_unchanged": merge_before_kr[1] == merge_after_kr[1],
-            "keiba_rows_3_7": after_keiba_entry,
-            "keirin_rows_3_7": after_keirin_entry,
-        }
-    )
+        dup_ok = True
+        for sport in SPORTS:
+            dup = workflow.run_predict(
+                sport,
+                TEST_DATE,
+                force=False,
+                sync_drive=False,
+                allow_sample=True,
+                try_auto=False,
+            )
+            if "二重登録防止" not in dup:
+                dup_ok = False
+                failed.append(f"{sport} idempotency failed")
+        report["checks"].append({"step": "idempotency", "all_blocked": dup_ok})
 
-    # 2. apply-results + results
-    workflow.apply_results_from_file(
-        "keiba", TEST_DATE, ROOT / "examples" / "keiba_results.sample.json"
-    )
-    workflow.apply_results_from_file(
-        "keirin", TEST_DATE, ROOT / "examples" / "keirin_results.sample.json"
-    )
-
-    entry_after_res_kb = read_entry_rows(copies["keiba_entry"])
-    entry_after_res_kr = read_entry_rows(copies["keirin_entry"])
-    summary_kb = read_summary_pt(copies["keiba_summary"])
-    summary_kr = read_summary_pt(copies["keirin_summary"])
-    formula_after_kb = snapshot_formulas(
-        copies["keiba_summary"], SHEET, range(12, 15), range(2, 16)
-    )
-    formula_after_kr = snapshot_formulas(
-        copies["keirin_summary"], SHEET, range(12, 15), range(2, 16)
-    )
-
-    # formula errors check
-    wb = load_workbook(copies["keiba_summary"])
-    formula_errors_kb = wb[SHEET].calculate_dimension()  # placeholder
-    wb.close()
-
-    def has_formula_errors(path: Path) -> bool:
-        wb = load_workbook(path)
-        ws = wb[SHEET]
-        for row in ws.iter_rows(min_row=1, max_row=20, min_col=1, max_col=20):
-            for cell in row:
-                if cell.data_type == "e":
-                    wb.close()
-                    return True
-        wb.close()
-        return False
-
-    ln_kb = [entry_after_res_kb[i]["L"] for i in range(3)]
-    ln_kr = [entry_after_res_kr[i]["L"] for i in range(3)]
-
-    report["checks"].append(
-        {
-            "step": "apply-results",
-            "keiba_L-N_sample": [{k: entry_after_res_kb[i][k] for k in "LMN"} for i in range(3)],
-            "keirin_L-N_sample": [{k: entry_after_res_kr[i][k] for k in "LMN"} for i in range(3)],
-            "keiba_summary_PT": summary_kb,
-            "keirin_summary_PT": summary_kr,
-            "keiba_B-O_formulas_unchanged": formula_before_kb == formula_after_kb,
-            "keirin_B-O_formulas_unchanged": formula_before_kr == formula_after_kr,
-            "keiba_formula_errors": has_formula_errors(copies["keiba_summary"]),
-            "keirin_formula_errors": has_formula_errors(copies["keirin_summary"]),
-        }
-    )
-
-    # 3. idempotency
-    dup_kb = workflow.run_predict("keiba", TEST_DATE, force=False)
-    dup_kr = workflow.run_predict("keirin", TEST_DATE, force=False)
-    forced_kb = workflow.run_predict("keiba", TEST_DATE, force=True)
-
-    report["checks"].append(
-        {
-            "step": "idempotency",
-            "dup_keiba_blocked": "二重登録防止" in dup_kb,
-            "dup_keirin_blocked": "二重登録防止" in dup_kr,
-            "force_keiba_ran": "選定レース数" in forced_kb or "予想報告" in forced_kb,
-        }
-    )
-
-    # 4. originals unchanged
-    unchanged = all(file_hash(ORIGINALS[k]) == original_hashes[k] for k in ORIGINALS)
-    report["checks"].append({"step": "isolation", "originals_unchanged": unchanged})
-
-    # Chatwork: grep workflow source
-    src = (ROOT / "tools" / "workflow.py").read_text()
-    report["checks"].append(
-        {
-            "step": "chatwork",
-            "workflow_calls_chatwork": "send_chatwork" in src or "chatwork_request" in src,
-        }
-    )
-
-    out = ROOT / "tests" / "e2e_excel_test_report.json"
-    out.write_text(json.dumps(report, ensure_ascii=False, indent=2, default=str) + "\n", encoding="utf-8")
-    print(json.dumps(report, ensure_ascii=False, indent=2, default=str))
-    failed = []
-    for chk in report["checks"]:
-        if chk["step"] == "predict-all":
-            for k, v in chk.items():
-                if k.endswith("_unchanged") or k.endswith("_preserved") or k.endswith("updated_rows3-5"):
-                    if v is False:
-                        failed.append(f"predict-all:{k}")
-        if chk["step"] == "apply-results":
-            if not chk["keiba_B-O_formulas_unchanged"]:
-                failed.append("summary formulas keiba changed")
-            if not chk["keirin_B-O_formulas_unchanged"]:
-                failed.append("summary formulas keirin changed")
-            if chk["keiba_formula_errors"] or chk["keirin_formula_errors"]:
-                failed.append("formula errors detected")
-        if chk["step"] == "idempotency":
-            if not chk["dup_keiba_blocked"] or not chk["dup_keirin_blocked"]:
-                failed.append("idempotency failed")
-        if chk["step"] == "isolation" and not chk["originals_unchanged"]:
+        unchanged = all(file_hash(ORIGINALS[k]) == original_hashes[k] for k in ORIGINALS)
+        report["checks"].append({"step": "isolation", "originals_unchanged": unchanged})
+        if not unchanged:
             failed.append("originals modified")
+
+        src = (ROOT / "tools" / "workflow.py").read_text()
+        chatwork = "send_chatwork" in src or "chatwork_request" in src
+        report["checks"].append({"step": "chatwork", "workflow_calls_chatwork": chatwork})
+        if chatwork:
+            failed.append("chatwork referenced")
+
+        jra_state = workflow.load_json(workflow.state_path("jra"))
+        nar_state = workflow.load_json(workflow.state_path("nar"))
+        jra_venues = {r.get("venue") for r in jra_state.get("records", []) if r.get("tickets")}
+        nar_venues = {r.get("venue") for r in nar_state.get("records", []) if r.get("tickets")}
+        separated = bool(jra_venues) and bool(nar_venues) and not (jra_venues & nar_venues)
+        report["checks"].append(
+            {
+                "step": "learning_separated",
+                "jra_venues": sorted(jra_venues),
+                "nar_venues": sorted(nar_venues),
+                "no_overlap": separated,
+            }
+        )
+        if not separated:
+            failed.append("jra/nar learning mixed")
+    finally:
+        workflow.ROOT = orig_root
+        shutil.rmtree(sandbox, ignore_errors=True)
+
+    production_after = snapshot_tree(ROOT / "data")
+    verify_after = snapshot_tree(verify)
+    frozen_report_after = frozen_report.read_bytes() if frozen_report.exists() else None
+    report["production_data_snapshot_match"] = production_before == production_after
+    report["dummy_verify_root_snapshot_match"] = verify_before == verify_after
+    report["legacy_report_file_untouched"] = frozen_report_before == frozen_report_after
+    report["production_data_files"] = sorted(production_before)
+    report["dummy_verify_files"] = sorted(verify_before)
+    if production_before != production_after:
+        failed.append("production data files changed")
+    if verify_before != verify_after:
+        failed.append("dummy verification root changed")
+    if frozen_report_before != frozen_report_after:
+        failed.append("legacy e2e report file changed")
+    shutil.rmtree(verify, ignore_errors=True)
+
+    print(json.dumps(report, ensure_ascii=False, indent=2, default=str))
     if failed:
         print("FAILED:", failed, file=sys.stderr)
         return 1

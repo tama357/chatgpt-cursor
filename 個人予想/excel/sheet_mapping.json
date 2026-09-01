@@ -1,6 +1,6 @@
 {
-  "keiba_entry": {
-    "path": "/workspace/個人予想/excel/競馬_予想記入シート_2026年9月.xlsx",
+  "jra_entry": {
+    "path": "/workspace/個人予想/excel/中央競馬_予想記入シート_2026年9月.xlsx",
     "kind": "entry",
     "sheets": {
       "202609": {
@@ -257,8 +257,8 @@
       }
     }
   },
-  "keiba_summary": {
-    "path": "/workspace/個人予想/excel/競馬_予想集計シート_2026年9月.xlsx",
+  "jra_summary": {
+    "path": "/workspace/個人予想/excel/中央競馬_予想集計シート_2026年9月.xlsx",
     "kind": "summary",
     "sheets": {
       "202609": {
@@ -419,8 +419,8 @@
       }
     }
   },
-  "keirin_entry": {
-    "path": "/workspace/個人予想/excel/競輪_個人_予想記入シート.xlsx",
+  "nar_entry": {
+    "path": "/workspace/個人予想/excel/地方競馬_予想記入シート_2026年9月.xlsx",
     "kind": "entry",
     "sheets": {
       "202609": {
@@ -677,8 +677,428 @@
       }
     }
   },
-  "keirin_summary": {
-    "path": "/workspace/個人予想/excel/競輪_個人_予想集計シート.xlsx",
+  "nar_summary": {
+    "path": "/workspace/個人予想/excel/地方競馬_予想集計シート_2026年9月.xlsx",
+    "kind": "summary",
+    "sheets": {
+      "202609": {
+        "header_row": 11,
+        "data_start_row": 12,
+        "rows_per_day": 3,
+        "label_col": 15,
+        "race_cols": [
+          16,
+          17,
+          18,
+          19,
+          20
+        ]
+      },
+      "202610": {
+        "header_row": 11,
+        "data_start_row": 12,
+        "rows_per_day": 3,
+        "label_col": 15,
+        "race_cols": [
+          16,
+          17,
+          18,
+          19,
+          20
+        ]
+      },
+      "202611": {
+        "header_row": 11,
+        "data_start_row": 12,
+        "rows_per_day": 3,
+        "label_col": 15,
+        "race_cols": [
+          16,
+          17,
+          18,
+          19,
+          20
+        ]
+      },
+      "202612": {
+        "header_row": 11,
+        "data_start_row": 12,
+        "rows_per_day": 3,
+        "label_col": 15,
+        "race_cols": [
+          16,
+          17,
+          18,
+          19,
+          20
+        ]
+      },
+      "202701": {
+        "header_row": 11,
+        "data_start_row": 12,
+        "rows_per_day": 3,
+        "label_col": 15,
+        "race_cols": [
+          16,
+          17,
+          18,
+          19,
+          20
+        ]
+      },
+      "202702": {
+        "header_row": 11,
+        "data_start_row": 12,
+        "rows_per_day": 3,
+        "label_col": 15,
+        "race_cols": [
+          16,
+          17,
+          18,
+          19,
+          20
+        ]
+      },
+      "202703": {
+        "header_row": 11,
+        "data_start_row": 12,
+        "rows_per_day": 3,
+        "label_col": 15,
+        "race_cols": [
+          16,
+          17,
+          18,
+          19,
+          20
+        ]
+      },
+      "202704": {
+        "header_row": 11,
+        "data_start_row": 12,
+        "rows_per_day": 3,
+        "label_col": 15,
+        "race_cols": [
+          16,
+          17,
+          18,
+          19,
+          20
+        ]
+      },
+      "202705": {
+        "header_row": 11,
+        "data_start_row": 12,
+        "rows_per_day": 3,
+        "label_col": 15,
+        "race_cols": [
+          16,
+          17,
+          18,
+          19,
+          20
+        ]
+      },
+      "202706": {
+        "header_row": 11,
+        "data_start_row": 12,
+        "rows_per_day": 3,
+        "label_col": 15,
+        "race_cols": [
+          16,
+          17,
+          18,
+          19,
+          20
+        ]
+      },
+      "202707": {
+        "header_row": 11,
+        "data_start_row": 12,
+        "rows_per_day": 3,
+        "label_col": 15,
+        "race_cols": [
+          16,
+          17,
+          18,
+          19,
+          20
+        ]
+      },
+      "202708": {
+        "header_row": 11,
+        "data_start_row": 12,
+        "rows_per_day": 3,
+        "label_col": 15,
+        "race_cols": [
+          16,
+          17,
+          18,
+          19,
+          20
+        ]
+      }
+    }
+  },
+  "kyotei_entry": {
+    "path": "/workspace/個人予想/excel/競艇_予想記入シート_2026年9月.xlsx",
+    "kind": "entry",
+    "sheets": {
+      "202609": {
+        "header_row": 2,
+        "data_start_row": 3,
+        "rows_per_day": 5,
+        "columns": {
+          "date": 1,
+          "pred_num": 2,
+          "target": 3,
+          "confidence": 4,
+          "venue": 5,
+          "race": 6,
+          "close_time": 7,
+          "main": 8,
+          "cover": 9,
+          "total_points": 10,
+          "explanation": 11,
+          "result_trifecta": 12,
+          "payout": 13,
+          "status": 14
+        }
+      },
+      "202610": {
+        "header_row": 2,
+        "data_start_row": 3,
+        "rows_per_day": 5,
+        "columns": {
+          "date": 1,
+          "pred_num": 2,
+          "target": 3,
+          "confidence": 4,
+          "venue": 5,
+          "race": 6,
+          "close_time": 7,
+          "main": 8,
+          "cover": 9,
+          "total_points": 10,
+          "explanation": 11,
+          "result_trifecta": 12,
+          "payout": 13,
+          "status": 14
+        }
+      },
+      "202611": {
+        "header_row": 2,
+        "data_start_row": 3,
+        "rows_per_day": 5,
+        "columns": {
+          "date": 1,
+          "pred_num": 2,
+          "target": 3,
+          "confidence": 4,
+          "venue": 5,
+          "race": 6,
+          "close_time": 7,
+          "main": 8,
+          "cover": 9,
+          "total_points": 10,
+          "explanation": 11,
+          "result_trifecta": 12,
+          "payout": 13,
+          "status": 14
+        }
+      },
+      "202612": {
+        "header_row": 2,
+        "data_start_row": 3,
+        "rows_per_day": 5,
+        "columns": {
+          "date": 1,
+          "pred_num": 2,
+          "target": 3,
+          "confidence": 4,
+          "venue": 5,
+          "race": 6,
+          "close_time": 7,
+          "main": 8,
+          "cover": 9,
+          "total_points": 10,
+          "explanation": 11,
+          "result_trifecta": 12,
+          "payout": 13,
+          "status": 14
+        }
+      },
+      "202701": {
+        "header_row": 2,
+        "data_start_row": 3,
+        "rows_per_day": 5,
+        "columns": {
+          "date": 1,
+          "pred_num": 2,
+          "target": 3,
+          "confidence": 4,
+          "venue": 5,
+          "race": 6,
+          "close_time": 7,
+          "main": 8,
+          "cover": 9,
+          "total_points": 10,
+          "explanation": 11,
+          "result_trifecta": 12,
+          "payout": 13,
+          "status": 14
+        }
+      },
+      "202702": {
+        "header_row": 2,
+        "data_start_row": 3,
+        "rows_per_day": 5,
+        "columns": {
+          "date": 1,
+          "pred_num": 2,
+          "target": 3,
+          "confidence": 4,
+          "venue": 5,
+          "race": 6,
+          "close_time": 7,
+          "main": 8,
+          "cover": 9,
+          "total_points": 10,
+          "explanation": 11,
+          "result_trifecta": 12,
+          "payout": 13,
+          "status": 14
+        }
+      },
+      "202703": {
+        "header_row": 2,
+        "data_start_row": 3,
+        "rows_per_day": 5,
+        "columns": {
+          "date": 1,
+          "pred_num": 2,
+          "target": 3,
+          "confidence": 4,
+          "venue": 5,
+          "race": 6,
+          "close_time": 7,
+          "main": 8,
+          "cover": 9,
+          "total_points": 10,
+          "explanation": 11,
+          "result_trifecta": 12,
+          "payout": 13,
+          "status": 14
+        }
+      },
+      "202704": {
+        "header_row": 2,
+        "data_start_row": 3,
+        "rows_per_day": 5,
+        "columns": {
+          "date": 1,
+          "pred_num": 2,
+          "target": 3,
+          "confidence": 4,
+          "venue": 5,
+          "race": 6,
+          "close_time": 7,
+          "main": 8,
+          "cover": 9,
+          "total_points": 10,
+          "explanation": 11,
+          "result_trifecta": 12,
+          "payout": 13,
+          "status": 14
+        }
+      },
+      "202705": {
+        "header_row": 2,
+        "data_start_row": 3,
+        "rows_per_day": 5,
+        "columns": {
+          "date": 1,
+          "pred_num": 2,
+          "target": 3,
+          "confidence": 4,
+          "venue": 5,
+          "race": 6,
+          "close_time": 7,
+          "main": 8,
+          "cover": 9,
+          "total_points": 10,
+          "explanation": 11,
+          "result_trifecta": 12,
+          "payout": 13,
+          "status": 14
+        }
+      },
+      "202706": {
+        "header_row": 2,
+        "data_start_row": 3,
+        "rows_per_day": 5,
+        "columns": {
+          "date": 1,
+          "pred_num": 2,
+          "target": 3,
+          "confidence": 4,
+          "venue": 5,
+          "race": 6,
+          "close_time": 7,
+          "main": 8,
+          "cover": 9,
+          "total_points": 10,
+          "explanation": 11,
+          "result_trifecta": 12,
+          "payout": 13,
+          "status": 14
+        }
+      },
+      "202707": {
+        "header_row": 2,
+        "data_start_row": 3,
+        "rows_per_day": 5,
+        "columns": {
+          "date": 1,
+          "pred_num": 2,
+          "target": 3,
+          "confidence": 4,
+          "venue": 5,
+          "race": 6,
+          "close_time": 7,
+          "main": 8,
+          "cover": 9,
+          "total_points": 10,
+          "explanation": 11,
+          "result_trifecta": 12,
+          "payout": 13,
+          "status": 14
+        }
+      },
+      "202708": {
+        "header_row": 2,
+        "data_start_row": 3,
+        "rows_per_day": 5,
+        "columns": {
+          "date": 1,
+          "pred_num": 2,
+          "target": 3,
+          "confidence": 4,
+          "venue": 5,
+          "race": 6,
+          "close_time": 7,
+          "main": 8,
+          "cover": 9,
+          "total_points": 10,
+          "explanation": 11,
+          "result_trifecta": 12,
+          "payout": 13,
+          "status": 14
+        }
+      }
+    }
+  },
+  "kyotei_summary": {
+    "path": "/workspace/個人予想/excel/競艇_予想集計シート_2026年9月.xlsx",
     "kind": "summary",
     "sheets": {
       "202609": {

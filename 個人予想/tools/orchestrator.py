@@ -7,9 +7,11 @@ from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from fetch import keiba as fetch_keiba_mod
-from fetch import keirin as fetch_keirin_mod
-from fetch.keirin_auto import fetch_results_for_predictions
+from common.constants import EXCEL_FILENAMES, SPORT_LABELS, SPORTS
+from fetch import jra as fetch_jra_mod
+from fetch import nar as fetch_nar_mod
+from fetch import kyotei as fetch_kyotei_mod
+from fetch.kyotei_auto import fetch_results_for_predictions
 from fetch.netkeiba import fetch_result_trifecta
 from fetch.race_builder import (
     result_data_path,
@@ -18,6 +20,10 @@ from fetch.race_builder import (
     save_races_json,
 )
 from fetch.base import today_str
+
+from excel.drive_sync import DriveAuthError, sync_excel_files  # noqa: E402
+
+FETCHERS = {"jra": fetch_jra_mod, "nar": fetch_nar_mod, "kyotei": fetch_kyotei_mod}
 
 
 def _yesterday_str() -> str:
@@ -31,16 +37,11 @@ def _header(title: str, target_date: str) -> str:
 
 def ensure_race_data(base_dir: Path, sport: str, target_date: str) -> tuple[list[dict[str, Any]], str]:
     path = race_data_path(base_dir, sport, target_date)
-    if sport == "keiba":
-        races = fetch_keiba_mod.fetch_races(
-            base_dir, target_date, allow_sample=False, try_auto=True
-        )
-        label = "競馬"
-    else:
-        races = fetch_keirin_mod.fetch_races(
-            base_dir, target_date, allow_sample=False, try_auto=True
-        )
-        label = "競輪（個人）"
+    if sport not in FETCHERS:
+        return [], f"⚠ 未対応の競技です: {sport}"
+    fetcher = FETCHERS[sport]
+    races = fetcher.fetch_races(base_dir, target_date, allow_sample=False, try_auto=True)
+    label = SPORT_LABELS[sport]
 
     if races:
         if not path.exists():
@@ -48,8 +49,13 @@ def ensure_race_data(base_dir: Path, sport: str, target_date: str) -> tuple[list
             save_races_json(base_dir, sport, target_date, races, source=str(source))
         return races, f"✅ {label}: {len(races)}レース分の出走情報を確認（{path.name}）"
 
+    if sport == "jra":
+        return [], (
+            f"【開催なし】{target_date} は中央競馬（JRA）の開催日ではありません。"
+            "開催日のみ予想します。"
+        )
     return [], (
-        f"⚠ {label}: 自動取得できませんでした。\n"
+        f"⚠ {label}: 自動取得に失敗しました。サンプルデータは使いません。\n"
         f"  CursorがWebで出走情報を調査し、`data/races/{sport}/{target_date}.json` を作成します。\n"
         f"  原田さんの手作業は不要です。"
     )
@@ -63,7 +69,7 @@ def ensure_result_data(
 ) -> tuple[list[dict[str, Any]], str]:
     path = result_data_path(base_dir, sport, target_date)
     if path.exists():
-        return [], f"✅ {sport}: 結果JSONあり（{path.name}）"
+        return [], f"✅ {SPORT_LABELS.get(sport, sport)}: 結果JSONあり（{path.name}）"
 
     pending = [
         r
@@ -71,17 +77,18 @@ def ensure_result_data(
         if not r.get("skipped") and r.get("tickets") and not r.get("result")
     ]
     if not pending:
-        return [], f"ℹ {sport}: 結果反映待ちの予想がありません。"
+        return [], f"ℹ {SPORT_LABELS.get(sport, sport)}: 結果反映待ちの予想がありません。"
 
-    if sport == "keirin":
+    if sport == "kyotei":
         results = fetch_results_for_predictions(pending)
-    else:
+    elif sport in {"jra", "nar"}:
         results = []
+        circuit = "nar" if sport == "nar" else "jra"
         for record in pending:
             race_id = (record.get("fetched_data") or {}).get("race_id")
             if not race_id:
                 continue
-            parsed = fetch_result_trifecta(str(race_id))
+            parsed = fetch_result_trifecta(str(race_id), circuit=circuit)
             if not parsed:
                 continue
             results.append(
@@ -93,15 +100,30 @@ def ensure_result_data(
                     "scenario_realized": None,
                 }
             )
+    else:
+        results = []
 
     if not results:
         return [], (
-            f"⚠ {sport}: 結果を自動取得できませんでした。\n"
+            f"⚠ {SPORT_LABELS.get(sport, sport)}: 結果を自動取得できませんでした。\n"
             f"  CursorがWebで正式結果を確認し、`data/results/{sport}/{target_date}.json` を作成します。"
         )
 
     save_results_json(base_dir, sport, target_date, results, source="auto_fetch")
-    return results, f"✅ {sport}: {len(results)}レースの結果JSONを作成（{path.name}）"
+    return results, f"✅ {SPORT_LABELS.get(sport, sport)}: {len(results)}レースの結果JSONを作成（{path.name}）"
+
+
+def _append_drive_sync(base_dir: Path, lines: list[str], *, keys: list[str] | None = None) -> None:
+    # この修正では Drive へアップロードしない。認証があっても報告はローカル接続のみ。
+    lines.append("\n\n## Google Drive\n\n今回は Drive を更新していません。ローカルExcelのみ接続・記入しています。")
+
+
+def _excel_list(base_dir: Path) -> str:
+    lines = ["\n\n## Excelファイル（ローカル）"]
+    for key, name in EXCEL_FILENAMES.items():
+        lines.append(f"- {key}: `{base_dir / 'excel' / name}`")
+    lines.append("\n詳細は `個人予想/CHATGPT_EXCEL.md` を参照。")
+    return "\n".join(lines)
 
 
 def run_predict_today(
@@ -111,33 +133,25 @@ def run_predict_today(
     force: bool = False,
     run_predict_fn,
 ) -> str:
-    """「今日の競馬と個人競輪を予想して」用。"""
+    """「今日の中央競馬と地方競馬と競艇を予想して」用。"""
     date = target_date or today_str()
-    lines = [_header("今日の予想（競馬＋個人競輪）", date)]
+    lines = [_header("今日の予想（中央競馬＋地方競馬＋競艇）", date)]
 
-    kb_races, kb_status = ensure_race_data(base_dir, "keiba", date)
-    lines.append(kb_status)
-    if not kb_races:
-        lines.append("\n---\n\n競馬予想は出走情報取得後に実行します。")
-    else:
-        lines.append("\n" + run_predict_fn("keiba", date, force=force))
+    for sport in SPORTS:
+        label = SPORT_LABELS[sport]
+        lines.append(f"\n---\n\n## {label}\n")
+        races, status = ensure_race_data(base_dir, sport, date)
+        lines.append(status)
+        if not races:
+            if sport == "jra":
+                lines.append("\n中央競馬は開催日のみ予想します。")
+            else:
+                lines.append(f"\n{label}予想は出走情報取得後に実行します。")
+            continue
+        lines.append("\n" + run_predict_fn(sport, date, force=force, sync_drive=False))
 
-    lines.append("\n---\n")
-    kr_races, kr_status = ensure_race_data(base_dir, "keirin", date)
-    lines.append(kr_status)
-    if not kr_races:
-        lines.append("\n個人競輪予想は出走情報取得後に実行します。")
-    else:
-        lines.append("\n" + run_predict_fn("keirin", date, force=force))
-
-    lines.append(
-        "\n\n## Excelファイル\n"
-        f"- 競馬 予想記入: `{base_dir / 'excel' / '競馬_予想記入シート_2026年9月.xlsx'}`\n"
-        f"- 競馬 集計: `{base_dir / 'excel' / '競馬_予想集計シート_2026年9月.xlsx'}`\n"
-        f"- 個人競輪 予想記入: `{base_dir / 'excel' / '競輪_個人_予想記入シート.xlsx'}`\n"
-        f"- 個人競輪 集計: `{base_dir / 'excel' / '競輪_個人_予想集計シート.xlsx'}`\n"
-        "\n詳細は `個人予想/CHATGPT_EXCEL.md` を参照（ChatGPT共有用）。"
-    )
+    lines.append(_excel_list(base_dir))
+    _append_drive_sync(base_dir, lines)
     return "\n".join(lines)
 
 
@@ -153,11 +167,12 @@ def run_results_yesterday(
     find_day_records_fn=None,
     load_state_fn=None,
 ) -> str:
-    """「昨日の結果を確認して」用。"""
+    """「昨日の結果を確認して」用。3競技を別々に反映。"""
     date = target_date or _yesterday_str()
-    lines = [_header("昨日の結果確認（競馬＋個人競輪）", date)]
+    lines = [_header("昨日の結果確認（中央競馬＋地方競馬＋競艇）", date)]
 
-    for sport, label in (("keiba", "競馬"), ("keirin", "個人競輪")):
+    for sport in SPORTS:
+        label = SPORT_LABELS[sport]
         lines.append(f"\n## {label}\n")
         state = load_state_fn(sport)
         day_records = find_day_records_fn(state, date)
@@ -170,16 +185,14 @@ def run_results_yesterday(
 
         result_path = result_data_path(base_dir, sport, date)
         if result_path.exists() and apply_results_fn is not None:
-            lines.append(apply_results_fn(sport, date, result_path))
+            lines.append(apply_results_fn(sport, date, result_path, sync_drive=False))
         elif run_results_fn is not None:
-            lines.append(run_results_fn(sport, date, force=force))
+            lines.append(run_results_fn(sport, date, force=force, sync_drive=False))
 
         if run_learning_fn is not None:
-            lines.append("\n### 学習レポート\n")
+            lines.append(f"\n### {label} 学習レポート（他競技と混ぜない）\n")
             lines.append(run_learning_fn(sport))
 
-    lines.append(
-        "\n\n## Excelファイル（更新済み）\n"
-        "個人競輪の2ファイルをChatGPTへ渡す場合は `個人予想/CHATGPT_EXCEL.md` のパスを使ってください。"
-    )
+    lines.append(_excel_list(base_dir))
+    _append_drive_sync(base_dir, lines)
     return "\n".join(lines)

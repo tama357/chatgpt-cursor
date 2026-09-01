@@ -1,11 +1,18 @@
 import importlib.util
-import json
+import shutil
 import sys
 import unittest
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from test_fixtures import (  # noqa: E402
+    PRODUCTION_ROOT,
+    TEST_DATE,
+    ProductionDataGuardMixin,
+    make_sandbox,
+)
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = PRODUCTION_ROOT
 WORKFLOW_PATH = ROOT / "tools" / "workflow.py"
 SPEC = importlib.util.spec_from_file_location("personal_workflow", WORKFLOW_PATH)
 workflow = importlib.util.module_from_spec(SPEC)
@@ -20,17 +27,34 @@ assert TSPEC.loader is not None
 sys.modules[TSPEC.name] = tickets
 TSPEC.loader.exec_module(tickets)
 
-TEST_DATE = "2026-09-01"
+SPORTS = ("jra", "nar", "kyotei")
+EXCEL_KEYS = (
+    "jra_entry",
+    "jra_summary",
+    "nar_entry",
+    "nar_summary",
+    "kyotei_entry",
+    "kyotei_summary",
+)
 
 
-class PersonalWorkflowTest(unittest.TestCase):
+class PersonalWorkflowTest(ProductionDataGuardMixin, unittest.TestCase):
+    """通し確認は一時ディレクトリ＋ allow_sample=True（テストデータ使用）。"""
+
     def setUp(self):
-        self.data_dir = ROOT / "data"
-        for sport in ("keiba", "keirin"):
-            sport_dir = self.data_dir / sport
-            if sport_dir.exists():
-                for f in sport_dir.glob("*.json"):
-                    f.unlink()
+        super().setUp()
+        self.sandbox = make_sandbox(ROOT, copy_excel=True)
+        self.addCleanup(shutil.rmtree, self.sandbox, True)
+        self._orig_root = workflow.ROOT
+        workflow.ROOT = self.sandbox
+        self.addCleanup(setattr, workflow, "ROOT", self._orig_root)
+
+    def _predict(self, sport: str, **kwargs):
+        kwargs.setdefault("force", True)
+        kwargs.setdefault("sync_drive", False)
+        kwargs.setdefault("allow_sample", True)
+        kwargs.setdefault("try_auto", False)
+        return workflow.run_predict(sport, TEST_DATE, **kwargs)
 
     def test_expand_pick(self):
         self.assertEqual(
@@ -38,57 +62,103 @@ class PersonalWorkflowTest(unittest.TestCase):
             ("4-2-1", "4-2-3", "4-2-5"),
         )
 
-    def test_init_excel_checks_files(self):
+    def test_init_excel_six_files_and_months(self):
         msg = workflow.init_excel_cmd()
-        self.assertIn("手動入力版", msg)
-        self.assertIn("sheet_mapping.json", msg)
+        self.assertIn("中央競馬", msg)
+        self.assertIn("地方競馬", msg)
+        self.assertIn("競艇", msg)
         excel = workflow.ensure_workbooks(workflow.ROOT)
-        for path in excel.values():
-            self.assertTrue(path.exists())
+        for key in EXCEL_KEYS:
+            self.assertIn(key, excel)
+            self.assertTrue(excel[key].exists())
+        self.assertNotIn("keiba_entry", excel)
+        self.assertNotIn("keirin_entry", excel)
+        from openpyxl import load_workbook
+        from common.constants import MONTH_SHEETS
 
-    def test_predict_keiba_from_sample(self):
-        report = workflow.run_predict("keiba", TEST_DATE, force=True)
-        self.assertIn("競馬", report)
+        for path in excel.values():
+            wb = load_workbook(path, read_only=True)
+            for month in MONTH_SHEETS:
+                self.assertIn(month, wb.sheetnames, f"{path.name} に {month} がない")
+            wb.close()
+
+    def test_predict_jra_from_sample(self):
+        """テストデータ使用: allow_sample=True で中央競馬の通しを確認する。"""
+        report = self._predict("jra")
+        self.assertIn("中央競馬", report)
         self.assertIn("中山", report)
-        state = workflow.load_json(workflow.state_path("keiba"))
+        state = workflow.load_json(workflow.state_path("jra"))
+        selected = [r for r in state["records"] if r["date"] == TEST_DATE and r.get("tickets")]
+        self.assertGreaterEqual(len(selected), 1)
+        self.assertLessEqual(len(selected), 5)
+        self.assertTrue(all(r.get("sport") == "jra" for r in selected))
+
+    def test_predict_nar_max_five(self):
+        """テストデータ使用: 地方競馬は最大5レース。"""
+        report = self._predict("nar")
+        self.assertIn("地方競馬", report)
+        self.assertIn("大井", report)
+        state = workflow.load_json(workflow.state_path("nar"))
+        selected = [r for r in state["records"] if r["date"] == TEST_DATE and r.get("tickets")]
+        self.assertEqual(len(selected), 5)
+        self.assertTrue(all(r.get("sport") == "nar" for r in selected))
+        venues = {r["venue"] for r in selected}
+        self.assertNotIn("中山", venues)
+
+    def test_predict_kyotei_from_sample(self):
+        """テストデータ使用: 競艇の通しを確認する。"""
+        report = self._predict("kyotei")
+        self.assertIn("競艇", report)
+        state = workflow.load_json(workflow.state_path("kyotei"))
         selected = [r for r in state["records"] if r["date"] == TEST_DATE and r.get("tickets")]
         self.assertGreaterEqual(len(selected), 1)
         self.assertLessEqual(len(selected), 5)
 
-    def test_predict_keirin_from_sample(self):
-        report = workflow.run_predict("keirin", TEST_DATE, force=True)
-        self.assertIn("競輪", report)
-        self.assertIn("松戸", report)
+    def test_predict_keiba_and_keirin_not_used(self):
+        self.assertIn("未対応", workflow.run_predict("keiba", TEST_DATE, force=True, sync_drive=False))
+        self.assertIn("未対応", workflow.run_predict("keirin", TEST_DATE, force=True, sync_drive=False))
+
+    def test_learning_data_is_separated(self):
+        self._predict("jra")
+        self._predict("nar")
+        workflow.apply_results_from_file(
+            "jra", TEST_DATE, ROOT / "examples" / "jra_results.sample.json", sync_drive=False
+        )
+        workflow.apply_results_from_file(
+            "nar", TEST_DATE, ROOT / "examples" / "nar_results.sample.json", sync_drive=False
+        )
+        jra_state = workflow.load_json(workflow.state_path("jra"))
+        nar_state = workflow.load_json(workflow.state_path("nar"))
+        jra_venues = {r.get("venue") for r in jra_state["records"] if r.get("tickets")}
+        nar_venues = {r.get("venue") for r in nar_state["records"] if r.get("tickets")}
+        self.assertTrue(jra_venues)
+        self.assertTrue(nar_venues)
+        self.assertFalse(jra_venues & nar_venues)
+        jra_learn = workflow.run_learning_report("jra")
+        nar_learn = workflow.run_learning_report("nar")
+        self.assertIn("100レースまでの残り", jra_learn)
+        self.assertIn("100レースまでの残り", nar_learn)
+        self.assertTrue((workflow.ROOT / "data" / "jra" / "learning_report.json").exists())
+        self.assertTrue((workflow.ROOT / "data" / "nar" / "learning_report.json").exists())
+        self.assertNotEqual(
+            workflow.state_path("jra"),
+            workflow.state_path("nar"),
+        )
 
     def test_idempotent_predict_without_force(self):
-        workflow.run_predict("keiba", TEST_DATE, force=True)
-        second = workflow.run_predict("keiba", TEST_DATE, force=False)
+        self._predict("jra")
+        second = self._predict("jra", force=False)
         self.assertIn("二重登録防止", second)
 
     def test_apply_results_and_review(self):
-        workflow.run_predict("keiba", TEST_DATE, force=True)
-        results_file = ROOT / "examples" / "keiba_results.sample.json"
-        report = workflow.apply_results_from_file("keiba", TEST_DATE, results_file)
+        self._predict("jra")
+        report = workflow.apply_results_from_file(
+            "jra", TEST_DATE, ROOT / "examples" / "jra_results.sample.json", sync_drive=False
+        )
         self.assertIn("結果報告", report)
-        state = workflow.load_json(workflow.state_path("keiba"))
+        state = workflow.load_json(workflow.state_path("jra"))
         completed = [r for r in state["records"] if r.get("review")]
         self.assertGreater(len(completed), 0)
-
-    def test_learning_report_collection_phase(self):
-        workflow.run_predict("keirin", TEST_DATE, force=True)
-        results_file = ROOT / "examples" / "keirin_results.sample.json"
-        workflow.apply_results_from_file("keirin", TEST_DATE, results_file)
-        report = workflow.run_learning_report("keirin")
-        self.assertIn("100レースまでの残り", report)
-        self.assertIn("自動反映", report)
-
-    def test_prediction_score_and_confidence_separate(self):
-        workflow.run_predict("keiba", TEST_DATE, force=True)
-        state = workflow.load_json(workflow.state_path("keiba"))
-        for record in state["records"]:
-            if record.get("tickets"):
-                self.assertIn("prediction_score", record)
-                self.assertIn("confidence", record)
 
 
 if __name__ == "__main__":

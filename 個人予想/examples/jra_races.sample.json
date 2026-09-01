@@ -1,0 +1,117 @@
+{
+  "date": "2026-09-01",
+  "source": "sample",
+  "note": "中央競馬（JRA）テスト用架空データ。実際の投票には使用しません。",
+  "races": [
+    {
+      "venue": "中山",
+      "race": 11,
+      "close_time": "15:40",
+      "axis": "3",
+      "entries": [
+        {"number": 1, "name": "サンプル1", "rating": 52, "popularity": 3},
+        {"number": 2, "name": "サンプル2", "rating": 48, "popularity": 5},
+        {"number": 3, "name": "サンプル3", "rating": 58, "popularity": 1},
+        {"number": 4, "name": "サンプル4", "rating": 50, "popularity": 4},
+        {"number": 5, "name": "サンプル5", "rating": 45, "popularity": 6},
+        {"number": 6, "name": "サンプル6", "rating": 47, "popularity": 2}
+      ],
+      "factors": {
+        "recent_form": 13,
+        "distance_course_fit": 14,
+        "surface_fit": 9,
+        "track_condition": 8,
+        "draw_position": 7,
+        "running_style": 9,
+        "scenario_clarity": 11,
+        "jockey": 7,
+        "weight_class": 6,
+        "popularity_odds": 4,
+        "rest_days": 4,
+        "change_risk": 4
+      },
+      "penalties": [],
+      "notes": "3番が近走好調。先行薄でペース慢。",
+      "scenario": "3番先行、4番差し。2着4番、3着1-2-5",
+      "odds_band_median": 25.0
+    },
+    {
+      "venue": "阪神",
+      "race": 12,
+      "close_time": "16:10",
+      "axis": "5",
+      "entries": [
+        {"number": 1, "rating": 55}, {"number": 2, "rating": 49},
+        {"number": 3, "rating": 51}, {"number": 4, "rating": 46},
+        {"number": 5, "rating": 57}, {"number": 6, "rating": 44}
+      ],
+      "factors": {
+        "recent_form": 12,
+        "distance_course_fit": 12,
+        "surface_fit": 8,
+        "track_condition": 7,
+        "draw_position": 6,
+        "running_style": 8,
+        "scenario_clarity": 9,
+        "jockey": 6,
+        "weight_class": 6,
+        "popularity_odds": 3,
+        "rest_days": 5,
+        "change_risk": 4
+      },
+      "penalties": [{"code": "unclear_pace", "points": 3}],
+      "notes": "5番軸。展開やや読みにくい。"
+    },
+    {
+      "venue": "新潟",
+      "race": 10,
+      "close_time": "14:50",
+      "axis": "2",
+      "entries": [
+        {"number": 1, "rating": 50}, {"number": 2, "rating": 54},
+        {"number": 3, "rating": 47}, {"number": 4, "rating": 49},
+        {"number": 5, "rating": 45}, {"number": 6, "rating": 43}
+      ],
+      "factors": {
+        "recent_form": 11,
+        "distance_course_fit": 11,
+        "surface_fit": 9,
+        "track_condition": 8,
+        "draw_position": 7,
+        "running_style": 8,
+        "scenario_clarity": 8,
+        "jockey": 6,
+        "weight_class": 5,
+        "popularity_odds": 4,
+        "rest_days": 4,
+        "change_risk": 3
+      },
+      "penalties": [{"code": "wide_open", "points": 8}]
+    },
+    {
+      "venue": "札幌",
+      "race": 9,
+      "close_time": "14:20",
+      "axis": "1",
+      "entries": [
+        {"number": 1, "rating": 42}, {"number": 2, "rating": 41},
+        {"number": 3, "rating": 40}, {"number": 4, "rating": 43}
+      ],
+      "factors": {
+        "recent_form": 8,
+        "distance_course_fit": 7,
+        "surface_fit": 6,
+        "track_condition": 6,
+        "draw_position": 5,
+        "running_style": 6,
+        "scenario_clarity": 5,
+        "jockey": 5,
+        "weight_class": 4,
+        "popularity_odds": 3,
+        "rest_days": 3,
+        "change_risk": 3
+      },
+      "penalties": [{"code": "data_shortage", "points": 10}]
+    }
+  ]
+}

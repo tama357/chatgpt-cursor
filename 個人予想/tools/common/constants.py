@@ -24,4 +24,42 @@ ALLOWED_TARGETS = frozenset({"鉄板", "中穴", "大穴"})
 ALLOWED_CONFIDENCE = frozenset({"A", "B", "C"})
 ALLOWED_TICKET_TYPES = frozenset({"本線", "抑え"})
 
-SPORTS = frozenset({"keiba", "keirin"})
+# 個人予想の正式3区分。keiba（統合）と keirin は未使用。
+SPORTS = ("jra", "nar", "kyotei")
+SPORT_LABELS = {
+    "jra": "中央競馬",
+    "nar": "地方競馬",
+    "kyotei": "競艇",
+}
+EXCEL_FILENAMES = {
+    "jra_entry": "中央競馬_予想記入シート_2026年9月.xlsx",
+    "jra_summary": "中央競馬_予想集計シート_2026年9月.xlsx",
+    "nar_entry": "地方競馬_予想記入シート_2026年9月.xlsx",
+    "nar_summary": "地方競馬_予想集計シート_2026年9月.xlsx",
+    "kyotei_entry": "競艇_予想記入シート_2026年9月.xlsx",
+    "kyotei_summary": "競艇_予想集計シート_2026年9月.xlsx",
+}
+SPORT_EXCEL_KEYS = {
+    "jra": ["jra_entry", "jra_summary"],
+    "nar": ["nar_entry", "nar_summary"],
+    "kyotei": ["kyotei_entry", "kyotei_summary"],
+}
+RULE_FILES = {
+    "jra": "jra_rules.json",
+    "nar": "nar_rules.json",
+    "kyotei": "kyotei_rules.json",
+}
+MONTH_SHEETS = [
+    "202609",
+    "202610",
+    "202611",
+    "202612",
+    "202701",
+    "202702",
+    "202703",
+    "202704",
+    "202705",
+    "202706",
+    "202707",
+    "202708",
+]

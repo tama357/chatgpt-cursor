@@ -1,4 +1,4 @@
-"""keirin.jp 公式JSON API から個人競輪用レース・結果データを取得する。"""
+"""keirin.jp 公式JSON API。個人予想では未使用（提出用は 競輪予想/）。"""
 
 from __future__ import annotations
 
