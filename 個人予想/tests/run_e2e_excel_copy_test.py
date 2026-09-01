@@ -22,8 +22,8 @@ TEST_DATA = ROOT / "data" / "_e2e_test"
 ORIGINALS = {
     "keiba_entry": ROOT / "excel" / "競馬_予想記入シート_2026年9月.xlsx",
     "keiba_summary": ROOT / "excel" / "競馬_予想集計シート_2026年9月.xlsx",
-    "keirin_entry": ROOT / "excel" / "競輪_個人_予想記入シート.xlsx",
-    "keirin_summary": ROOT / "excel" / "競輪_個人_予想集計シート.xlsx",
+    "kyotei_entry": ROOT / "excel" / "競艇_予想記入シート_2026年9月.xlsx",
+    "kyotei_summary": ROOT / "excel" / "競艇_予想集計シート_2026年9月.xlsx",
 }
 
 
@@ -140,83 +140,87 @@ def main() -> int:
     original_hashes = {k: file_hash(p) for k, p in ORIGINALS.items()}
     copies = setup_copies()
     patch_workflow(workflow, copies)
+    for sport in ("keiba", "kyotei"):
+        dest = ROOT / "data" / "races" / sport / f"{TEST_DATE}.json"
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(ROOT / "examples" / f"{sport}_races.sample.json", dest)
 
     before_keiba_entry = read_entry_rows(copies["keiba_entry"])
-    before_keirin_entry = read_entry_rows(copies["keirin_entry"])
+    before_kyotei_entry = read_entry_rows(copies["kyotei_entry"])
     formula_before_kb = snapshot_formulas(
         copies["keiba_summary"], SHEET, range(12, 15), range(2, 16)
     )
     formula_before_kr = snapshot_formulas(
-        copies["keirin_summary"], SHEET, range(12, 15), range(2, 16)
+        copies["kyotei_summary"], SHEET, range(12, 15), range(2, 16)
     )
     merge_before_kb = snapshot_merges_and_dv(copies["keiba_entry"], SHEET)
-    merge_before_kr = snapshot_merges_and_dv(copies["keirin_entry"], SHEET)
+    merge_before_kr = snapshot_merges_and_dv(copies["kyotei_entry"], SHEET)
 
     report: dict[str, object] = {"date": TEST_DATE, "checks": []}
 
     # 1. predict-all
-    kb_pred = workflow.run_predict("keiba", TEST_DATE, force=True)
-    kr_pred = workflow.run_predict("keirin", TEST_DATE, force=True)
+    kb_pred = workflow.run_predict("keiba", TEST_DATE, force=True, sync_drive=False)
+    kr_pred = workflow.run_predict("kyotei", TEST_DATE, force=True, sync_drive=False)
     report["predict_keiba_head"] = kb_pred.splitlines()[:5]
-    report["predict_keirin_head"] = kr_pred.splitlines()[:5]
+    report["predict_kyotei_head"] = kr_pred.splitlines()[:5]
 
     after_keiba_entry = read_entry_rows(copies["keiba_entry"])
-    after_keirin_entry = read_entry_rows(copies["keirin_entry"])
+    after_kyotei_entry = read_entry_rows(copies["kyotei_entry"])
 
     keiba_ab_ok = all(
         after_keiba_entry[i]["A"] == before_keiba_entry[i]["A"]
         and after_keiba_entry[i]["B"] == before_keiba_entry[i]["B"]
         for i in range(5)
     )
-    keirin_ab_ok = all(
-        after_keirin_entry[i]["A"] == before_keirin_entry[i]["A"]
-        and after_keirin_entry[i]["B"] == before_keirin_entry[i]["B"]
+    kyotei_ab_ok = all(
+        after_kyotei_entry[i]["A"] == before_kyotei_entry[i]["A"]
+        and after_kyotei_entry[i]["B"] == before_kyotei_entry[i]["B"]
         for i in range(5)
     )
     keiba_ck_updated = all(
         any(after_keiba_entry[i][c] not in (None, "") for c in "CDEFGHIJK")
         for i in range(3)
     )
-    keirin_ck_updated = all(
-        any(after_keirin_entry[i][c] not in (None, "") for c in "CDEFGHIJK")
+    kyotei_ck_updated = all(
+        any(after_kyotei_entry[i][c] not in (None, "") for c in "CDEFGHIJK")
         for i in range(3)
     )
     merge_after_kb = snapshot_merges_and_dv(copies["keiba_entry"], SHEET)
-    merge_after_kr = snapshot_merges_and_dv(copies["keirin_entry"], SHEET)
+    merge_after_kr = snapshot_merges_and_dv(copies["kyotei_entry"], SHEET)
 
     report["checks"].append(
         {
             "step": "predict-all",
             "keiba_AB_preserved": keiba_ab_ok,
-            "keirin_AB_preserved": keirin_ab_ok,
+            "kyotei_AB_preserved": kyotei_ab_ok,
             "keiba_C-K_updated_rows3-5": keiba_ck_updated,
-            "keirin_C-K_updated_rows3-5": keirin_ck_updated,
+            "kyotei_C-K_updated_rows3-5": kyotei_ck_updated,
             "keiba_merges_unchanged": merge_before_kb[0] == merge_after_kb[0],
-            "keirin_merges_unchanged": merge_before_kr[0] == merge_after_kr[0],
+            "kyotei_merges_unchanged": merge_before_kr[0] == merge_after_kr[0],
             "keiba_dv_unchanged": merge_before_kb[1] == merge_after_kb[1],
-            "keirin_dv_unchanged": merge_before_kr[1] == merge_after_kr[1],
+            "kyotei_dv_unchanged": merge_before_kr[1] == merge_after_kr[1],
             "keiba_rows_3_7": after_keiba_entry,
-            "keirin_rows_3_7": after_keirin_entry,
+            "kyotei_rows_3_7": after_kyotei_entry,
         }
     )
 
     # 2. apply-results + results
     workflow.apply_results_from_file(
-        "keiba", TEST_DATE, ROOT / "examples" / "keiba_results.sample.json"
+        "keiba", TEST_DATE, ROOT / "examples" / "keiba_results.sample.json", sync_drive=False
     )
     workflow.apply_results_from_file(
-        "keirin", TEST_DATE, ROOT / "examples" / "keirin_results.sample.json"
+        "kyotei", TEST_DATE, ROOT / "examples" / "kyotei_results.sample.json", sync_drive=False
     )
 
     entry_after_res_kb = read_entry_rows(copies["keiba_entry"])
-    entry_after_res_kr = read_entry_rows(copies["keirin_entry"])
+    entry_after_res_kr = read_entry_rows(copies["kyotei_entry"])
     summary_kb = read_summary_pt(copies["keiba_summary"])
-    summary_kr = read_summary_pt(copies["keirin_summary"])
+    summary_kr = read_summary_pt(copies["kyotei_summary"])
     formula_after_kb = snapshot_formulas(
         copies["keiba_summary"], SHEET, range(12, 15), range(2, 16)
     )
     formula_after_kr = snapshot_formulas(
-        copies["keirin_summary"], SHEET, range(12, 15), range(2, 16)
+        copies["kyotei_summary"], SHEET, range(12, 15), range(2, 16)
     )
 
     # formula errors check
@@ -242,26 +246,26 @@ def main() -> int:
         {
             "step": "apply-results",
             "keiba_L-N_sample": [{k: entry_after_res_kb[i][k] for k in "LMN"} for i in range(3)],
-            "keirin_L-N_sample": [{k: entry_after_res_kr[i][k] for k in "LMN"} for i in range(3)],
+            "kyotei_L-N_sample": [{k: entry_after_res_kr[i][k] for k in "LMN"} for i in range(3)],
             "keiba_summary_PT": summary_kb,
-            "keirin_summary_PT": summary_kr,
+            "kyotei_summary_PT": summary_kr,
             "keiba_B-O_formulas_unchanged": formula_before_kb == formula_after_kb,
-            "keirin_B-O_formulas_unchanged": formula_before_kr == formula_after_kr,
+            "kyotei_B-O_formulas_unchanged": formula_before_kr == formula_after_kr,
             "keiba_formula_errors": has_formula_errors(copies["keiba_summary"]),
-            "keirin_formula_errors": has_formula_errors(copies["keirin_summary"]),
+            "kyotei_formula_errors": has_formula_errors(copies["kyotei_summary"]),
         }
     )
 
     # 3. idempotency
-    dup_kb = workflow.run_predict("keiba", TEST_DATE, force=False)
-    dup_kr = workflow.run_predict("keirin", TEST_DATE, force=False)
-    forced_kb = workflow.run_predict("keiba", TEST_DATE, force=True)
+    dup_kb = workflow.run_predict("keiba", TEST_DATE, force=False, sync_drive=False)
+    dup_kr = workflow.run_predict("kyotei", TEST_DATE, force=False, sync_drive=False)
+    forced_kb = workflow.run_predict("keiba", TEST_DATE, force=True, sync_drive=False)
 
     report["checks"].append(
         {
             "step": "idempotency",
             "dup_keiba_blocked": "二重登録防止" in dup_kb,
-            "dup_keirin_blocked": "二重登録防止" in dup_kr,
+            "dup_kyotei_blocked": "二重登録防止" in dup_kr,
             "force_keiba_ran": "選定レース数" in forced_kb or "予想報告" in forced_kb,
         }
     )
@@ -292,12 +296,22 @@ def main() -> int:
         if chk["step"] == "apply-results":
             if not chk["keiba_B-O_formulas_unchanged"]:
                 failed.append("summary formulas keiba changed")
-            if not chk["keirin_B-O_formulas_unchanged"]:
-                failed.append("summary formulas keirin changed")
-            if chk["keiba_formula_errors"] or chk["keirin_formula_errors"]:
+            if not chk["kyotei_B-O_formulas_unchanged"]:
+                failed.append("summary formulas kyotei changed")
+            if chk["keiba_formula_errors"] or chk["kyotei_formula_errors"]:
                 failed.append("formula errors detected")
+            keiba_ln = chk.get("keiba_L-N_sample") or []
+            kyotei_ln = chk.get("kyotei_L-N_sample") or []
+            if not keiba_ln or any(not row.get("L") for row in keiba_ln):
+                failed.append("keiba results L column empty")
+            if not kyotei_ln or any(not row.get("L") for row in kyotei_ln):
+                failed.append("kyotei results L column empty")
+            kyotei_pt = chk.get("kyotei_summary_PT") or {}
+            kyotei_status = kyotei_pt.get("row12_P-T") or []
+            if not any(s in {"的中", "ハズレ"} for s in kyotei_status):
+                failed.append("kyotei summary P-T not updated")
         if chk["step"] == "idempotency":
-            if not chk["dup_keiba_blocked"] or not chk["dup_keirin_blocked"]:
+            if not chk["dup_keiba_blocked"] or not chk["dup_kyotei_blocked"]:
                 failed.append("idempotency failed")
         if chk["step"] == "isolation" and not chk["originals_unchanged"]:
             failed.append("originals modified")

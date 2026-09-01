@@ -1,0 +1,31 @@
+{
+  "version": "2026-09-01",
+  "folder_id": "1jSFuaBXq3PC0426VPk8Y3DHSZrs70G1f",
+  "folder_name": "ChatGPT",
+  "folder_url": "https://drive.google.com/drive/folders/1jSFuaBXq3PC0426VPk8Y3DHSZrs70G1f",
+  "forbidden_title_prefixes": [
+    "競輪_個人"
+  ],
+  "files": {
+    "keiba_entry": {
+      "local_name": "競馬_予想記入シート_2026年9月.xlsx",
+      "drive_file_id": "1HF_fjsZBNej0fcCC-dedYtRhb6rFU0Mw",
+      "drive_title": "競馬_予想記入シート_2026年9月.xlsx"
+    },
+    "keiba_summary": {
+      "local_name": "競馬_予想集計シート_2026年9月.xlsx",
+      "drive_file_id": "12BOGJ9FV22Arokmqt30hNuixTq_-35qN",
+      "drive_title": "競馬_予想集計シート_2026年9月.xlsx"
+    },
+    "kyotei_entry": {
+      "local_name": "競艇_予想記入シート_2026年9月.xlsx",
+      "drive_file_id": "10qbVsaqW6RfqNgdSdjOmiSF5JEsIK2W5",
+      "drive_title": "競艇_予想記入シート_2026年9月.xlsx"
+    },
+    "kyotei_summary": {
+      "local_name": "競艇_予想集計シート_2026年9月.xlsx",
+      "drive_file_id": "1YCv2VU01kMiwN2RzV4PUpCvfdBhIIJvy",
+      "drive_title": "競艇_予想集計シート_2026年9月.xlsx"
+    }
+  }
+}

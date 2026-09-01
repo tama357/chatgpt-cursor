@@ -173,11 +173,11 @@ def format_learning_report_text(report: dict[str, Any]) -> str:
 
 def format_summary_report(
     keiba_records: list[dict[str, Any]],
-    keirin_records: list[dict[str, Any]],
+    kyotei_records: list[dict[str, Any]],
     date: str,
 ) -> str:
     kb = performance([r for r in keiba_records if r.get("result") and r["result"]["status"] != "未実施"])
-    kr = performance([r for r in keirin_records if r.get("result") and r["result"]["status"] != "未実施"])
+    kt = performance([r for r in kyotei_records if r.get("result") and r["result"]["status"] != "未実施"])
     day_kb = performance(
         [
             r
@@ -185,10 +185,10 @@ def format_summary_report(
             if r["date"] == date and r.get("result") and r["result"]["status"] != "未実施"
         ]
     )
-    day_kr = performance(
+    day_kt = performance(
         [
             r
-            for r in keirin_records
+            for r in kyotei_records
             if r["date"] == date and r.get("result") and r["result"]["status"] != "未実施"
         ]
     )
@@ -200,9 +200,9 @@ def format_summary_report(
             f"- 当日: 的中率{_pct(day_kb['hit_rate'])} / 回収率{_pct(day_kb['return_rate'])}",
             f"- 累計: 的中率{_pct(kb['hit_rate'])} / 回収率{_pct(kb['return_rate'])} (n={kb['n']})",
             "",
-            "## 競輪（個人検証）",
-            f"- 当日: 的中率{_pct(day_kr['hit_rate'])} / 回収率{_pct(day_kr['return_rate'])}",
-            f"- 累計: 的中率{_pct(kr['hit_rate'])} / 回収率{_pct(kr['return_rate'])} (n={kr['n']})",
+            "## 競艇",
+            f"- 当日: 的中率{_pct(day_kt['hit_rate'])} / 回収率{_pct(day_kt['return_rate'])}",
+            f"- 累計: 的中率{_pct(kt['hit_rate'])} / 回収率{_pct(kt['return_rate'])} (n={kt['n']})",
         ]
     )
 

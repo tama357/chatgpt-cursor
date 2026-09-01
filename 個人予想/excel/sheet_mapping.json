@@ -419,8 +419,8 @@
       }
     }
   },
-  "keirin_entry": {
-    "path": "/workspace/個人予想/excel/競輪_個人_予想記入シート.xlsx",
+  "kyotei_entry": {
+    "path": "/workspace/個人予想/excel/競艇_予想記入シート_2026年9月.xlsx",
     "kind": "entry",
     "sheets": {
       "202609": {
@@ -677,8 +677,8 @@
       }
     }
   },
-  "keirin_summary": {
-    "path": "/workspace/個人予想/excel/競輪_個人_予想集計シート.xlsx",
+  "kyotei_summary": {
+    "path": "/workspace/個人予想/excel/競艇_予想集計シート_2026年9月.xlsx",
     "kind": "summary",
     "sheets": {
       "202609": {

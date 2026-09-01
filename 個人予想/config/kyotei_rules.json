@@ -1,0 +1,65 @@
+{
+  "version": "2026-09-01-personal-kyotei",
+  "sport": "kyotei",
+  "mode": "manual_input",
+  "timezone": "Asia/Tokyo",
+  "max_races_per_day": 5,
+  "bet_type": "trifecta",
+  "min_combinations_per_race": 8,
+  "max_combinations_per_race": 20,
+  "target_combinations_note": "8〜20点を目安。上限20点",
+  "stake_per_point_yen": 100,
+  "primary_target": "return_rate",
+  "learning_auto_apply_threshold": 100,
+  "minimum_close_time": null,
+  "allowed_targets": ["鉄板", "中穴", "大穴"],
+  "allowed_confidence": ["A", "B", "C"],
+  "allowed_ticket_types": ["本線", "抑え"],
+  "scoring_rubric": {
+    "score_name": "prediction_score",
+    "definition": "レース自体の予想しやすさ",
+    "initial_weights": {
+      "axis_reliability": 20,
+      "motor_2ren": 18,
+      "exhibition_time": 15,
+      "ability_gap": 15,
+      "course_advantage": 12,
+      "scenario_clarity": 12,
+      "odds_clarity": 8
+    },
+    "penalty_codes": [
+      "evenly_matched",
+      "close_exhibition",
+      "wide_open",
+      "data_shortage",
+      "other"
+    ],
+    "selection_min_score": 60
+  },
+  "confidence": {
+    "definition": "作成した買い目への確信度",
+    "allowed_values": ["A", "B", "C"],
+    "independent_from": "prediction_score"
+  },
+  "miss_reasons": [
+    "axis_miss",
+    "second_place_miss",
+    "third_place_miss",
+    "scenario_miss",
+    "line_collapse",
+    "unexpected_position",
+    "upset",
+    "condition_miss",
+    "accident",
+    "data_shortage",
+    "overconfidence",
+    "too_many_combinations",
+    "too_few_combinations",
+    "other"
+  ],
+  "prediction_logic_version": "kyotei-v1.0.0",
+  "entry_sheet": "競艇_予想記入シート_2026年9月.xlsx",
+  "summary_sheet": "競艇_予想集計シート_2026年9月.xlsx",
+  "month_sheets": ["202609","202610","202611","202612","202701","202702","202703","202704","202705","202706","202707","202708"],
+  "note": "提出用競輪予想（競輪予想/）とは完全分離。個人競輪Excelは使用しない。"
+}

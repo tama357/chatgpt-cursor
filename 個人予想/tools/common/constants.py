@@ -24,4 +24,4 @@ ALLOWED_TARGETS = frozenset({"鉄板", "中穴", "大穴"})
 ALLOWED_CONFIDENCE = frozenset({"A", "B", "C"})
 ALLOWED_TICKET_TYPES = frozenset({"本線", "抑え"})
 
-SPORTS = frozenset({"keiba", "keirin"})
+SPORTS = frozenset({"keiba", "kyotei"})

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from common.tickets import count_tickets
+from common.tickets import ValidationError, count_tickets
 
 
 def build_prediction(candidate: dict[str, Any], rules: dict[str, Any], number: int) -> dict[str, Any]:
@@ -45,9 +45,7 @@ def _build_tickets(
     rivals = candidate.get("rivals") or _top_rivals(entries, axis)
     min_pts = rules.get("min_combinations_per_race", 1)
     max_pts = rules["max_combinations_per_race"]
-    is_keiba = rules.get("sport") == "keiba"
-
-    if is_keiba:
+    if rules.get("sport") in {"keiba", "kyotei"}:
         return _build_keiba_tickets(axis, rivals, entries, min_pts, max_pts)
     return _build_keirin_tickets(axis, rivals, entries, max_pts)
 

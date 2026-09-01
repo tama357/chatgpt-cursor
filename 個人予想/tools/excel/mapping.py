@@ -214,8 +214,8 @@ def write_mapping_cache(base_dir: Path) -> Path:
     files = {
         "keiba_entry": excel_dir / "競馬_予想記入シート_2026年9月.xlsx",
         "keiba_summary": excel_dir / "競馬_予想集計シート_2026年9月.xlsx",
-        "keirin_entry": excel_dir / "競輪_個人_予想記入シート.xlsx",
-        "keirin_summary": excel_dir / "競輪_個人_予想集計シート.xlsx",
+        "kyotei_entry": excel_dir / "競艇_予想記入シート_2026年9月.xlsx",
+        "kyotei_summary": excel_dir / "競艇_予想集計シート_2026年9月.xlsx",
     }
     cache: dict[str, Any] = {}
     for key, path in files.items():
