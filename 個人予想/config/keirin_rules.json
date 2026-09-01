@@ -1,0 +1,62 @@
+{
+  "version": "2026-09-01-personal",
+  "sport": "keirin_personal",
+  "timezone": "Asia/Tokyo",
+  "max_races_per_day": 5,
+  "bet_type": "trifecta",
+  "max_combinations_per_race": 10,
+  "stake_per_point_yen": 100,
+  "primary_target": "hit_rate",
+  "learning_auto_apply_threshold": 100,
+  "minimum_close_time": "18:00",
+  "allowed_targets": ["鉄板", "中穴", "大穴"],
+  "allowed_confidence": ["A", "B", "C"],
+  "allowed_ticket_types": ["本線", "抑え"],
+  "scoring_rubric": {
+    "score_name": "prediction_score",
+    "definition": "レース自体の予想しやすさ",
+    "initial_weights": {
+      "axis_reliability": 20,
+      "line_clarity": 15,
+      "ability_gap": 15,
+      "scenario_simplicity": 15,
+      "recent_form": 15,
+      "track_style_fit": 10,
+      "risk_absence": 10
+    },
+    "penalty_codes": [
+      "fragmented_race",
+      "evenly_matched",
+      "no_clear_axis",
+      "multiple_returnees",
+      "data_shortage",
+      "other"
+    ],
+    "selection_min_score": 60
+  },
+  "confidence": {
+    "definition": "作成した買い目への確信度",
+    "allowed_values": ["A", "B", "C"],
+    "independent_from": "prediction_score"
+  },
+  "miss_reasons": [
+    "axis_miss",
+    "second_place_miss",
+    "third_place_miss",
+    "scenario_miss",
+    "line_collapse",
+    "unexpected_position",
+    "upset",
+    "condition_miss",
+    "accident",
+    "data_shortage",
+    "overconfidence",
+    "too_many_combinations",
+    "too_few_combinations",
+    "other"
+  ],
+  "prediction_logic_version": "keirin-personal-v1.0.0",
+  "entry_sheet": "競輪_個人_予想記入シート_2026年9月.xlsx",
+  "summary_sheet": "競輪_個人_予想集計シート_2026年9月.xlsx",
+  "note": "提出用競輪予想（競輪予想/）とは完全分離。Chatwork・Google Sheets提出用ファイルは使用しない。"
+}

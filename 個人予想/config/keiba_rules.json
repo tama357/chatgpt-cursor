@@ -1,0 +1,67 @@
+{
+  "version": "2026-09-01-personal",
+  "sport": "keiba",
+  "timezone": "Asia/Tokyo",
+  "max_races_per_day": 5,
+  "bet_type": "trifecta",
+  "max_combinations_per_race": 10,
+  "stake_per_point_yen": 100,
+  "primary_target": "return_rate",
+  "learning_auto_apply_threshold": 100,
+  "minimum_close_time": null,
+  "allowed_targets": ["鉄板", "中穴", "大穴"],
+  "allowed_confidence": ["A", "B", "C"],
+  "allowed_ticket_types": ["本線", "抑え"],
+  "scoring_rubric": {
+    "score_name": "prediction_score",
+    "definition": "レース自体の予想しやすさ",
+    "initial_weights": {
+      "recent_form": 15,
+      "distance_course_fit": 15,
+      "surface_fit": 10,
+      "track_condition": 10,
+      "draw_position": 8,
+      "running_style": 10,
+      "scenario_clarity": 12,
+      "jockey": 8,
+      "weight_class": 7,
+      "popularity_odds": 5,
+      "rest_days": 5,
+      "change_risk": 5
+    },
+    "penalty_codes": [
+      "many_first_time",
+      "unclear_pace",
+      "wide_open",
+      "heavy_favorite_only",
+      "scratch_impact",
+      "data_shortage",
+      "other"
+    ],
+    "selection_min_score": 60
+  },
+  "confidence": {
+    "definition": "作成した買い目への確信度",
+    "allowed_values": ["A", "B", "C"],
+    "independent_from": "prediction_score"
+  },
+  "miss_reasons": [
+    "axis_miss",
+    "second_place_miss",
+    "third_place_miss",
+    "scenario_miss",
+    "line_collapse",
+    "unexpected_position",
+    "upset",
+    "condition_miss",
+    "accident",
+    "data_shortage",
+    "overconfidence",
+    "too_many_combinations",
+    "too_few_combinations",
+    "other"
+  ],
+  "prediction_logic_version": "keiba-v1.0.0",
+  "entry_sheet": "競馬_予想記入シート_2026年9月.xlsx",
+  "summary_sheet": "競馬_予想集計シート_2026年9月.xlsx"
+}
