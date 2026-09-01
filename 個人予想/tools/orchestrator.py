@@ -7,7 +7,13 @@ from typing import Any
 
 from common.constants import EXCEL_FILENAMES, SPORT_LABELS, SPORTS
 from common.jst import today_str, yesterday_str
-from common.state import is_before_start_date, load_json, skip_before_start_message
+from common.state import (
+    is_before_start_date,
+    is_canonical_state,
+    load_canonical_state,
+    skip_before_start_message,
+)
+from common.tickets import ValidationError
 from fetch import jra as fetch_jra_mod
 from fetch import nar as fetch_nar_mod
 from fetch import kyotei as fetch_kyotei_mod
@@ -167,6 +173,19 @@ def _excel_list(base_dir: Path) -> str:
     return "\n".join(lines)
 
 
+def _ready_state(base_dir: Path, sport: str, load_state_fn=None) -> dict[str, Any]:
+    """正規stateだけを使う。load_json の仮stateでは続けない。"""
+    if load_state_fn is None:
+        return load_canonical_state(base_dir, sport)
+    state = load_state_fn(sport)
+    if not is_canonical_state(state, sport):
+        raise ValidationError(
+            f"data/{sport}/state.json は正規stateではありません。"
+            " 処理していません。Excelは変更していません。"
+        )
+    return state
+
+
 def run_predict_today(
     base_dir: Path,
     *,
@@ -181,7 +200,11 @@ def run_predict_today(
     for sport in SPORTS:
         label = SPORT_LABELS[sport]
         lines.append(f"\n---\n\n## {label}\n")
-        state = load_json(base_dir / "data" / sport / "state.json")
+        try:
+            state = _ready_state(base_dir, sport)
+        except ValidationError as exc:
+            lines.append(str(exc))
+            continue
         if is_before_start_date(state, date):
             lines.append(skip_before_start_message(state, date, kind="predict"))
             continue
@@ -219,7 +242,11 @@ def run_results_yesterday(
     for sport in SPORTS:
         label = SPORT_LABELS[sport]
         lines.append(f"\n## {label}\n")
-        state = load_state_fn(sport)
+        try:
+            state = _ready_state(base_dir, sport, load_state_fn)
+        except ValidationError as exc:
+            lines.append(str(exc))
+            continue
         if is_before_start_date(state, date):
             lines.append(skip_before_start_message(state, date, kind="results"))
             continue
@@ -239,7 +266,7 @@ def run_results_yesterday(
 
         still_pending = [
             r
-            for r in find_day_records_fn(load_state_fn(sport), date)
+            for r in find_day_records_fn(_ready_state(base_dir, sport, load_state_fn), date)
             if not r.get("skipped") and r.get("tickets") and not (r.get("result") or {}).get("trifecta")
         ]
         if run_learning_fn is not None and not still_pending:

@@ -39,6 +39,7 @@ from common.state import (  # noqa: E402
     init_personal_states,
     is_before_start_date,
     is_processed,
+    load_canonical_state,
     load_json,
     mark_processed,
     records_since_start,
@@ -105,7 +106,7 @@ def run_predict(
     if sport not in CONFIG_FILES:
         return UNSUPPORTED.format(sport=sport)
     rules = load_rules(sport)
-    state = load_json(state_path(sport))
+    state = load_canonical_state(ROOT, sport)
     if is_before_start_date(state, target_date):
         return skip_before_start_message(state, target_date, kind="predict")
     state["sport"] = rules["sport"]
@@ -216,7 +217,7 @@ def run_results(sport: str, target_date: str, *, force: bool = False, sync_drive
     if sport not in CONFIG_FILES:
         return UNSUPPORTED.format(sport=sport)
     rules = load_rules(sport)
-    state = load_json(state_path(sport))
+    state = load_canonical_state(ROOT, sport)
     if is_before_start_date(state, target_date):
         return skip_before_start_message(state, target_date, kind="results")
     key = f"results:{target_date}"
@@ -364,7 +365,7 @@ def apply_results_from_file(
     sport: str, target_date: str, results_file: Path, *, sync_drive: bool = True
 ) -> str:
     """結果JSONをstateへ反映してから run_results を実行。"""
-    state = load_json(state_path(sport))
+    state = load_canonical_state(ROOT, sport)
     if is_before_start_date(state, target_date):
         return skip_before_start_message(state, target_date, kind="results")
     with results_file.open(encoding="utf-8") as handle:
@@ -376,7 +377,7 @@ def apply_results_from_file(
 
 def run_learning_report(sport: str) -> str:
     rules = load_rules(sport)
-    state = load_json(state_path(sport))
+    state = load_canonical_state(ROOT, sport)
     records = records_since_start(state, with_result=True)
     report = build_learning_report(records, rules)
     report_path = ROOT / "data" / sport / "learning_report.json"
@@ -523,7 +524,7 @@ def main(argv: list[str] | None = None) -> int:
                     run_results_fn=run_results,
                     run_learning_fn=run_learning_report,
                     find_day_records_fn=find_day_records,
-                    load_state_fn=lambda sport: load_json(state_path(sport)),
+                    load_state_fn=lambda sport: load_canonical_state(ROOT, sport),
                 )
             )
         elif args.command == "predict-today":
@@ -545,7 +546,7 @@ def main(argv: list[str] | None = None) -> int:
                     run_results_fn=run_results,
                     run_learning_fn=run_learning_report,
                     find_day_records_fn=find_day_records,
-                    load_state_fn=lambda sport: load_json(state_path(sport)),
+                    load_state_fn=lambda sport: load_canonical_state(ROOT, sport),
                 )
             )
         elif args.command == "predict-jra":

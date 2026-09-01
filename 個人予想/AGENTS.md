@@ -19,7 +19,7 @@ JSON 作成、コマンド入力、Excel 操作は **すべて Cursor が実行*
 python3 個人予想/tools/workflow.py init-state --start-date 2026-09-03 --i-confirm-init-state
 ```
 
-このコマンドは Excel・Drive・提出用 `競輪予想/` を変更しません。
+このコマンドは Excel・Drive・提出用 `競輪予想/` を変更しません。3競技とも成功するか、1つも残さないかのどちらかです。既存stateは上書きしません。
 
 ## Cursor が自動で行うこと
 
@@ -84,6 +84,7 @@ python3 個人予想/tools/workflow.py save-races kyotei /path/to/races.json --d
 - `verify-drive` と `bootstrap-cloud` はスイッチがオフでもサービスアカウントを使う
 - 既存6 Excel は ID指定で更新する。同名ファイルは新規作成しない
 - 開始時に Drive から Excel と学習データを取得し、終了時に保存する
+- Drive取得直後に3競技の正規state（開始日 2026-09-03 JST）を確認する。無ければ出走取得・Excel更新・Drive保存をしない
 - 学習データは `data/jra`・`data/nar`・`data/kyotei` で分離する
 - 日々のExcel更新では PR を作らない
 - 最初の確認は `verify-drive`（読み取りのみ。失敗したら終了コード1）

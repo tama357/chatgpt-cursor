@@ -11,7 +11,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
@@ -25,19 +25,27 @@ from test_fixtures import (  # noqa: E402
 )
 
 from common.constants import DEFAULT_START_DATE, SPORTS, STATE_TIMEZONE, STATE_VERSION  # noqa: E402
+from common import state as state_mod  # noqa: E402
 from common.state import (  # noqa: E402
     canonical_state_problems,
     get_start_date,
     init_personal_states,
     is_before_start_date,
     is_canonical_state,
+    load_canonical_state,
     load_json,
     new_state,
+    production_state_problems,
     records_since_start,
     save_json,
 )
 from common.tickets import ValidationError  # noqa: E402
-from cloud_runner import CloudJobError, run_bootstrap_cloud  # noqa: E402
+from cloud_runner import (  # noqa: E402
+    CloudJobError,
+    run_bootstrap_cloud,
+    run_cloud_predict,
+    run_cloud_results,
+)
 from orchestrator import run_predict_today, run_results_yesterday  # noqa: E402
 import cloud_runner  # noqa: E402
 
@@ -63,6 +71,29 @@ EXCEL_NAMES = (
 
 def _file_hash(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+class _OkReport:
+    failed = 0
+    succeeded = 6
+    results: list = []
+
+    def format_report(self):
+        return "ok"
+
+
+def _prepare_excel_config(tmp: Path) -> None:
+    (tmp / "config").mkdir(exist_ok=True)
+    shutil.copy(ROOT / "config" / "drive_excel.json", tmp / "config" / "drive_excel.json")
+    (tmp / "excel").mkdir(exist_ok=True)
+    for name in EXCEL_NAMES:
+        dest = tmp / "excel" / name
+        if not dest.exists():
+            dest.write_bytes(b"xlsx")
+
+
+def _count_states(root: Path) -> int:
+    return sum(1 for sport in SPORTS if (root / "data" / sport / "state.json").exists())
 
 
 def _completed_record(date: str, *, sport: str = "jra", hit: bool = True) -> dict:
@@ -380,6 +411,236 @@ class InitStateTest(ProductionDataGuardMixin, unittest.TestCase):
             text = run_bootstrap_cloud(self.tmp, confirm=True)
         self.assertIn("初期移行", text)
         mock_pull.assert_not_called()
+
+    def test_bootstrap_rejects_wrong_start_date_even_if_all_match(self):
+        _prepare_excel_config(self.tmp)
+        write_canonical_states(self.tmp, start_date="2026-09-01")
+        problems = production_state_problems(self.tmp)
+        self.assertTrue(any("2026-09-01" in item for item in problems))
+        with (
+            patch.object(cloud_runner, "sync_excel_files") as mock_sync,
+            patch.object(cloud_runner, "push_learning_data") as mock_push,
+        ):
+            with self.assertRaises(CloudJobError) as ctx:
+                run_bootstrap_cloud(self.tmp, confirm=True)
+            message = str(ctx.exception)
+            self.assertIn("start_dateが2026-09-03ではない", message)
+            self.assertIn("2026-09-01", message)
+            mock_sync.assert_not_called()
+            mock_push.assert_not_called()
+
+    def test_bootstrap_rejects_mismatched_start_dates(self):
+        _prepare_excel_config(self.tmp)
+        write_canonical_states(self.tmp, start_date=START)
+        kyotei = json.loads((self.tmp / "data" / "kyotei" / "state.json").read_text(encoding="utf-8"))
+        kyotei["start_date"] = "2026-09-04"
+        (self.tmp / "data" / "kyotei" / "state.json").write_text(
+            json.dumps(kyotei, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+        )
+        with (
+            patch.object(cloud_runner, "sync_excel_files") as mock_sync,
+            patch.object(cloud_runner, "push_learning_data") as mock_push,
+        ):
+            with self.assertRaises(CloudJobError) as ctx:
+                run_bootstrap_cloud(self.tmp, confirm=True)
+            message = str(ctx.exception)
+            self.assertIn("一致しません", message)
+            mock_sync.assert_not_called()
+            mock_push.assert_not_called()
+
+    def test_cloud_jobs_stop_before_fetch_when_drive_has_no_state(self):
+        _prepare_excel_config(self.tmp)
+        mock_today = Mock(side_effect=AssertionError("予想してはいけない"))
+        mock_predict = Mock(side_effect=AssertionError("予想してはいけない"))
+        mock_results = Mock(side_effect=AssertionError("結果処理してはいけない"))
+        with (
+            patch.object(cloud_runner, "pull_excel_files", return_value=_OkReport()),
+            patch.object(cloud_runner, "pull_learning_data", return_value=_OkReport()),
+            patch.object(cloud_runner, "sync_excel_files") as mock_sync,
+            patch.object(cloud_runner, "push_learning_data") as mock_push,
+            patch.object(state_mod, "save_json", side_effect=AssertionError("stateを書いてはいけない")),
+            patch(
+                "orchestrator.ensure_race_data",
+                side_effect=AssertionError("出走取得してはいけない"),
+            ),
+            patch(
+                "orchestrator.ensure_result_data",
+                side_effect=AssertionError("結果取得してはいけない"),
+            ),
+        ):
+            with self.assertRaises(CloudJobError) as pred_ctx:
+                run_cloud_predict(
+                    self.tmp,
+                    target_date=START,
+                    force=True,
+                    run_predict_today_fn=mock_today,
+                    run_predict_fn=mock_predict,
+                )
+            with self.assertRaises(CloudJobError) as res_ctx:
+                run_cloud_results(
+                    self.tmp,
+                    target_date=START,
+                    force=True,
+                    run_results_yesterday_fn=mock_results,
+                )
+        for message in (str(pred_ctx.exception), str(res_ctx.exception)):
+            self.assertIn("正規stateが揃っていない", message)
+            self.assertIn("Drive保存は行っていません", message)
+        mock_today.assert_not_called()
+        mock_predict.assert_not_called()
+        mock_results.assert_not_called()
+        mock_sync.assert_not_called()
+        mock_push.assert_not_called()
+        self.assertEqual(_count_states(self.tmp), 0)
+
+    def test_cloud_jobs_reject_invalid_wrong_and_mismatched_states(self):
+        _prepare_excel_config(self.tmp)
+        cases = [
+            "invalid",
+            "wrong-date",
+            "mismatch",
+            "missing-start",
+        ]
+        for case in cases:
+            shutil.rmtree(self.tmp / "data", ignore_errors=True)
+            write_canonical_states(self.tmp, start_date=START)
+            if case == "invalid":
+                payload = json.loads(
+                    (self.tmp / "data" / "nar" / "state.json").read_text(encoding="utf-8")
+                )
+                payload["timezone"] = "UTC"
+                (self.tmp / "data" / "nar" / "state.json").write_text(
+                    json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+                )
+            elif case == "wrong-date":
+                write_canonical_states(self.tmp, start_date="2026-09-01")
+            elif case == "mismatch":
+                payload = json.loads(
+                    (self.tmp / "data" / "jra" / "state.json").read_text(encoding="utf-8")
+                )
+                payload["start_date"] = "2026-09-05"
+                (self.tmp / "data" / "jra" / "state.json").write_text(
+                    json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+                )
+            else:
+                payload = json.loads(
+                    (self.tmp / "data" / "kyotei" / "state.json").read_text(encoding="utf-8")
+                )
+                del payload["start_date"]
+                (self.tmp / "data" / "kyotei" / "state.json").write_text(
+                    json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+                )
+
+            mock_today = Mock(side_effect=AssertionError("予想してはいけない"))
+            with (
+                patch.object(cloud_runner, "pull_excel_files", return_value=_OkReport()),
+                patch.object(cloud_runner, "pull_learning_data", return_value=_OkReport()),
+                patch.object(cloud_runner, "sync_excel_files") as mock_sync,
+                patch.object(cloud_runner, "push_learning_data") as mock_push,
+            ):
+                with self.assertRaises(CloudJobError):
+                    run_cloud_predict(
+                        self.tmp,
+                        target_date=START,
+                        force=True,
+                        run_predict_today_fn=mock_today,
+                        run_predict_fn=mock_today,
+                    )
+                with self.assertRaises(CloudJobError):
+                    run_bootstrap_cloud(self.tmp, confirm=True)
+            mock_today.assert_not_called()
+            mock_sync.assert_not_called()
+            mock_push.assert_not_called()
+
+    def test_init_second_and_third_save_failure_leave_zero_states(self):
+        prod_data = snapshot_tree(ROOT / "data")
+        prod_excel = snapshot_tree(ROOT / "excel", skip_dir_names=frozenset({"_e2e_test"}))
+        orig = state_mod._place_state_file
+        leftover = self.tmp / "data" / "jra" / "learning_report.json"
+        leftover.parent.mkdir(parents=True)
+        leftover.write_text("keep-me\n", encoding="utf-8")
+
+        for fail_at in (2, 3):
+            shutil.rmtree(self.tmp / "data", ignore_errors=True)
+            leftover.parent.mkdir(parents=True)
+            leftover.write_text("keep-me\n", encoding="utf-8")
+            calls = {"n": 0}
+
+            def failing(src, dest, *, _fail_at=fail_at, _calls=calls):
+                _calls["n"] += 1
+                if _calls["n"] == _fail_at:
+                    raise OSError(f"simulated save failure at {_fail_at}")
+                return orig(src, dest)
+
+            with patch.object(state_mod, "_place_state_file", side_effect=failing):
+                with self.assertRaises(ValidationError) as ctx:
+                    init_personal_states(self.tmp, start_date=START, confirm=True)
+            self.assertIn("残していません", str(ctx.exception))
+            self.assertEqual(_count_states(self.tmp), 0)
+            self.assertTrue(leftover.exists())
+            self.assertEqual(leftover.read_text(encoding="utf-8"), "keep-me\n")
+            writing = [p for p in self.tmp.rglob("*") if p.is_file() and p.name.endswith(".writing")]
+            self.assertEqual(writing, [])
+            self.assertEqual(snapshot_tree(ROOT / "data"), prod_data)
+            self.assertEqual(
+                snapshot_tree(ROOT / "excel", skip_dir_names=frozenset({"_e2e_test"})),
+                prod_excel,
+            )
+
+    def test_init_rejects_non_official_start_date(self):
+        with self.assertRaises(ValidationError) as ctx:
+            init_personal_states(self.tmp, start_date="2026-09-01", confirm=True)
+        self.assertIn("2026-09-03", str(ctx.exception))
+        self.assertEqual(_count_states(self.tmp), 0)
+
+    def test_local_jobs_refuse_dummy_state_before_writes(self):
+        sandbox = make_sandbox(ROOT, copy_excel=True)
+        self.addCleanup(shutil.rmtree, sandbox, True)
+        workflow.ROOT = sandbox
+        dummy = load_json(sandbox / "data" / "jra" / "state.json")
+        self.assertFalse(is_canonical_state(dummy, "jra"))
+        with self.assertRaises(ValidationError):
+            load_canonical_state(sandbox, "jra")
+        excel_before = snapshot_tree(sandbox / "excel")
+        with (
+            patch.object(
+                workflow.fetch_jra,
+                "fetch_races_outcome",
+                side_effect=AssertionError("出走取得してはいけない"),
+            ),
+            patch.object(
+                workflow,
+                "ensure_result_data",
+                side_effect=AssertionError("結果取得してはいけない"),
+            ),
+            patch.object(
+                workflow,
+                "ensure_workbooks",
+                side_effect=AssertionError("Excelを書いてはいけない"),
+            ),
+            patch.object(
+                state_mod,
+                "save_json",
+                side_effect=AssertionError("stateを書いてはいけない"),
+            ),
+        ):
+            with self.assertRaises(ValidationError) as pred:
+                workflow.run_predict("jra", START, force=True, sync_drive=False)
+            with self.assertRaises(ValidationError) as results:
+                workflow.run_results("jra", START, force=True, sync_drive=False)
+            with self.assertRaises(ValidationError) as applied:
+                workflow.apply_results_from_file(
+                    "jra",
+                    START,
+                    ROOT / "examples" / "jra_results.sample.json",
+                    sync_drive=False,
+                )
+            with self.assertRaises(ValidationError) as learning:
+                workflow.run_learning_report("jra")
+        for ctx in (pred, results, applied, learning):
+            self.assertIn("ありません", str(ctx.exception))
+        self.assertEqual(snapshot_tree(sandbox / "excel"), excel_before)
+        self.assertEqual(_count_states(sandbox), 0)
 
     def test_workflow_yml_keeps_schedule_off_without_switch(self):
         text = (

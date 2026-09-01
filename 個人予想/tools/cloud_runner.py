@@ -15,7 +15,7 @@ except ImportError:  # Windows のローカル確認用。クラウド実行は 
 from common.constants import SPORTS
 from common.job_summary import collect_day_stats, format_github_summary, write_github_summary
 from common.jst import today_str, yesterday_str
-from common.state import canonical_state_problems
+from common.state import production_state_problems
 from excel.drive_sync import (
     DriveAuthError,
     format_read_only_report,
@@ -125,7 +125,7 @@ def _missing_bootstrap_files(base_dir: Path) -> list[str]:
         path = base_dir / "excel" / spec["local_name"]
         if not path.exists():
             missing.append(f"excel/{spec['local_name']}")
-    missing.extend(canonical_state_problems(base_dir))
+    missing.extend(production_state_problems(base_dir))
     return missing
 
 
@@ -168,7 +168,7 @@ def run_bootstrap_cloud(base_dir: Path, *, confirm: bool) -> str:
     write_github_summary(
         format_github_summary(
             title="初期移行 bootstrap-cloud",
-            target_date="2026-09-02",
+            target_date="2026-09-03",
             drive_ok=excel.failed == 0 and data.failed == 0,
             extra_lines=lines,
         )
@@ -206,6 +206,16 @@ def _finish_summary(
     )
 
 
+def _require_ready_states(base_dir: Path) -> None:
+    problems = production_state_problems(base_dir)
+    if problems:
+        raise CloudJobError(
+            "正規stateが揃っていないため処理を中止しました: "
+            + ", ".join(problems)
+            + "\n出走取得・結果取得・Excel更新・state更新・Drive保存は行っていません。"
+        )
+
+
 def run_cloud_predict(
     base_dir: Path,
     *,
@@ -217,6 +227,7 @@ def run_cloud_predict(
     date = target_date or today_str()
     with exclusive_lock(base_dir):
         parts = [_pull(base_dir)]
+        _require_ready_states(base_dir)
         parts.append(
             run_predict_today_fn(
                 base_dir,
@@ -252,6 +263,7 @@ def run_cloud_results(
     date = target_date or yesterday_str()
     with exclusive_lock(base_dir):
         parts = [_pull(base_dir)]
+        _require_ready_states(base_dir)
         parts.append(
             run_results_yesterday_fn(
                 base_dir,
