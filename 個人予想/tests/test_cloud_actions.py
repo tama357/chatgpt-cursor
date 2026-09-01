@@ -205,9 +205,11 @@ class CloudActionsTest(ProductionDataGuardMixin, unittest.TestCase):
             def format_report(self):
                 return "failed"
 
+        import cloud_runner
+
         with (
-            patch.object(drive_sync, "sync_excel_files", return_value=FailReport()),
-            patch.object(drive_sync, "push_learning_data", return_value=FailReport()),
+            patch.object(cloud_runner, "sync_excel_files", return_value=FailReport()),
+            patch.object(cloud_runner, "push_learning_data", return_value=FailReport()),
         ):
             with self.assertRaises(CloudJobError):
                 _push(ROOT)
