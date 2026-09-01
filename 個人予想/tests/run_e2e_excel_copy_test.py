@@ -18,8 +18,9 @@ sys.path.insert(0, str(ROOT / "tools"))
 from common.constants import EXCEL_FILENAMES, SPORTS  # noqa: E402
 from test_fixtures import (  # noqa: E402
     TEST_DATE,
-    cleanup_production_runtime_files,
-    leftover_production_race_paths,
+    make_sandbox,
+    seed_dummy_runtime,
+    snapshot_tree,
 )
 
 SHEET = "202609"
@@ -40,26 +41,16 @@ def file_hash(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def setup_copies(tmp: Path) -> dict[str, Path]:
-    excel_dir = tmp / "excel"
-    excel_dir.mkdir(parents=True)
-    copies: dict[str, Path] = {}
-    for key, src in ORIGINALS.items():
-        dst = excel_dir / src.name
-        shutil.copy2(src, dst)
-        copies[key] = dst
-    return copies
+def setup_copies(sandbox: Path) -> dict[str, Path]:
+    return {key: sandbox / "excel" / name for key, name in EXCEL_FILENAMES.items()}
 
 
-def patch_workflow(workflow, copies: dict[str, Path], data_dir: Path) -> None:
+def patch_workflow(workflow, copies: dict[str, Path], sandbox: Path) -> None:
     def test_workbooks(_base: Path) -> dict[str, Path]:
         return dict(copies)
 
-    def test_state_path(sport: str) -> Path:
-        return data_dir / sport / "state.json"
-
     workflow.ensure_workbooks = test_workbooks  # type: ignore[method-assign]
-    workflow.state_path = test_state_path  # type: ignore[method-assign]
+    workflow.ROOT = sandbox
 
 
 def snapshot_formulas(path: Path, sheet: str, rows: range, cols: range) -> dict[tuple[int, int], str]:
@@ -121,21 +112,25 @@ def has_formula_errors(path: Path) -> bool:
 def main() -> int:
     import tempfile
 
-    cleanup_production_runtime_files(ROOT)
     workflow = load_workflow()
+    orig_root = workflow.ROOT
+    production_before = snapshot_tree(ROOT / "data")
     original_hashes = {k: file_hash(p) for k, p in ORIGINALS.items()}
-    tmp = Path(tempfile.mkdtemp(prefix="personal-e2e-"))
+    sandbox = make_sandbox(ROOT, copy_excel=True)
+    verify = Path(tempfile.mkdtemp(prefix="personal-e2e-verify-"))
+    seed_dummy_runtime(verify)
+    verify_before = snapshot_tree(verify)
     failed: list[str] = []
     report: dict[str, object] = {
         "date": TEST_DATE,
         "data_mode": "テストデータ使用",
-        "note": "一時ディレクトリで allow_sample=True。本番 data には残さない。",
+        "note": "一時ディレクトリで allow_sample=True。本番 data は削除も変更もしない。",
         "checks": [],
         "sports": list(SPORTS),
     }
     try:
-        copies = setup_copies(tmp)
-        patch_workflow(workflow, copies, tmp / "data")
+        copies = setup_copies(sandbox)
+        patch_workflow(workflow, copies, sandbox)
 
         predict_check: dict[str, object] = {"step": "predict-all"}
         apply_check: dict[str, object] = {"step": "apply-results"}
@@ -251,20 +246,20 @@ def main() -> int:
         if not separated:
             failed.append("jra/nar learning mixed")
     finally:
-        shutil.rmtree(tmp, ignore_errors=True)
-        cleanup_production_runtime_files(ROOT)
+        workflow.ROOT = orig_root
+        shutil.rmtree(sandbox, ignore_errors=True)
 
-    leftovers = leftover_production_race_paths(ROOT)
-    report["production_race_json_leftover"] = [str(p) for p in leftovers]
-    if leftovers:
-        failed.append("production race json leftover")
-    for sport in SPORTS:
-        state_path = ROOT / "data" / sport / "state.json"
-        result_path = ROOT / "data" / "results" / sport / f"{TEST_DATE}.json"
-        if state_path.exists():
-            failed.append(f"{sport} state leftover")
-        if result_path.exists():
-            failed.append(f"{sport} results leftover")
+    production_after = snapshot_tree(ROOT / "data")
+    verify_after = snapshot_tree(verify)
+    report["production_data_snapshot_match"] = production_before == production_after
+    report["dummy_verify_root_snapshot_match"] = verify_before == verify_after
+    report["production_data_files"] = sorted(production_before)
+    report["dummy_verify_files"] = sorted(verify_before)
+    if production_before != production_after:
+        failed.append("production data files changed")
+    if verify_before != verify_after:
+        failed.append("dummy verification root changed")
+    shutil.rmtree(verify, ignore_errors=True)
 
     out = ROOT / "tests" / "e2e_excel_test_report.json"
     out.write_text(json.dumps(report, ensure_ascii=False, indent=2, default=str) + "\n", encoding="utf-8")

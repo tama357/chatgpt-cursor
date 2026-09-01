@@ -9,7 +9,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from test_fixtures import (  # noqa: E402
     PRODUCTION_ROOT,
     TEST_DATE,
-    cleanup_production_runtime_files,
+    ProductionDataGuardMixin,
     make_sandbox,
 )
 
@@ -35,12 +35,11 @@ FETCH_MODS = (
 )
 
 
-class OrchestratorTest(unittest.TestCase):
+class OrchestratorTest(ProductionDataGuardMixin, unittest.TestCase):
     def setUp(self):
-        cleanup_production_runtime_files(ROOT)
+        super().setUp()
         self.sandbox = make_sandbox(ROOT, copy_excel=True)
         self.addCleanup(shutil.rmtree, self.sandbox, True)
-        self.addCleanup(cleanup_production_runtime_files, ROOT)
         self._orig_root = workflow.ROOT
         workflow.ROOT = self.sandbox
         self.addCleanup(setattr, workflow, "ROOT", self._orig_root)
