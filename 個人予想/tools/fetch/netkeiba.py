@@ -235,28 +235,63 @@ def fetch_races_outcome(date_str: str, circuit: str = "jra") -> dict[str, Any]:
     return {"races": races, "status": "ok", "error": None}
 
 
+def _valid_official_trifecta(a: int, b: int, c: int) -> str | None:
+    if not (1 <= a <= 18 and 1 <= b <= 18 and 1 <= c <= 18):
+        return None
+    if len({a, b, c}) < 3:
+        return None
+    return f"{a}-{b}-{c}"
+
+
 def parse_result_trifecta(html: str) -> dict[str, Any] | None:
-    patterns = [
-        r"3連単[^0-9]{0,40}(\d{1,2})-(\d{1,2})-(\d{1,2})[^\d]{0,20}(\d{1,3}(?:,\d{3})*)",
-        r"三連単[^0-9]{0,40}(\d{1,2})-(\d{1,2})-(\d{1,2})[^\d]{0,20}(\d{1,3}(?:,\d{3})*)",
-        r"Pay_Ninki[^>]*>.*?(\d{1,2})\s*-\s*(\d{1,2})\s*-\s*(\d{1,2}).{0,120}?(\d{1,3}(?:,\d{3})*)",
-    ]
-    for pat in patterns:
-        pay = re.search(pat, html, re.S)
-        if pay:
-            trifecta = f"{int(pay.group(1))}-{int(pay.group(2))}-{int(pay.group(3))}"
-            payout = int(pay.group(4).replace(",", ""))
-            if re.fullmatch(r"[1-9]-[1-9]-[1-9]", trifecta):
-                return {"trifecta": trifecta, "payout": payout, "source": "netkeiba"}
-    compact = re.search(r"3連単.{0,200}?(\d{1,2})\s*[^\d]\s*(\d{1,2})\s*[^\d]\s*(\d{1,2})", html, re.S)
-    if compact:
-        trifecta = f"{int(compact.group(1))}-{int(compact.group(2))}-{int(compact.group(3))}"
-        if re.fullmatch(r"[1-9]-[1-9]-[1-9]", trifecta):
-            yen = re.search(r"¥\s*([0-9,]+)|&yen;\s*([0-9,]+)", html)
-            payout = 0
-            if yen:
-                payout = int((yen.group(1) or yen.group(2)).replace(",", ""))
-            return {"trifecta": trifecta, "payout": payout, "source": "netkeiba"}
+    """公式結果ページの三連単と払戻。馬番は1〜18。メニューリンクの『3連単』は使わない。"""
+    tan3 = re.search(
+        r'(?:3連単|三連単)</th>\s*<td[^>]*class="Result"[^>]*>\s*<ul>\s*'
+        r"<li><span>(\d{1,2})</span></li>\s*"
+        r"<li><span>(\d{1,2})</span></li>\s*"
+        r"<li><span>(\d{1,2})</span></li>.*?"
+        r'class="Payout"><span>([0-9,]+)円</span>',
+        html,
+        re.S,
+    )
+    if tan3:
+        trifecta = _valid_official_trifecta(int(tan3.group(1)), int(tan3.group(2)), int(tan3.group(3)))
+        if trifecta:
+            return {
+                "trifecta": trifecta,
+                "payout": int(tan3.group(4).replace(",", "")),
+                "source": "netkeiba",
+            }
+
+    db_row = re.search(
+        r"三連単</th>\s*<td>\s*(\d{1,2})-(\d{1,2})-(\d{1,2})\s*</td>\s*"
+        r"<td[^>]*>\s*([0-9,]+)",
+        html,
+        re.S,
+    )
+    if db_row:
+        trifecta = _valid_official_trifecta(int(db_row.group(1)), int(db_row.group(2)), int(db_row.group(3)))
+        if trifecta:
+            return {
+                "trifecta": trifecta,
+                "payout": int(db_row.group(4).replace(",", "")),
+                "source": "netkeiba",
+            }
+
+    simple = re.search(
+        r"(?:3連単|三連単)\s+(\d{1,2})-(\d{1,2})-(\d{1,2})\s+([0-9,]+)円",
+        html,
+    )
+    if simple:
+        trifecta = _valid_official_trifecta(
+            int(simple.group(1)), int(simple.group(2)), int(simple.group(3))
+        )
+        if trifecta:
+            return {
+                "trifecta": trifecta,
+                "payout": int(simple.group(4).replace(",", "")),
+                "source": "netkeiba",
+            }
     return None
 
 

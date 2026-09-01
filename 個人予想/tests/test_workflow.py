@@ -3,6 +3,7 @@ import shutil
 import sys
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from test_fixtures import (  # noqa: E402
@@ -159,6 +160,75 @@ class PersonalWorkflowTest(ProductionDataGuardMixin, unittest.TestCase):
         state = workflow.load_json(workflow.state_path("jra"))
         completed = [r for r in state["records"] if r.get("review")]
         self.assertGreater(len(completed), 0)
+
+    def test_partial_results_are_not_marked_processed(self):
+        self._predict("nar")
+        state = workflow.load_json(workflow.state_path("nar"))
+        selected = [
+            r
+            for r in state["records"]
+            if r.get("date") == TEST_DATE and r.get("tickets")
+        ]
+        self.assertGreaterEqual(len(selected), 2)
+        first, rest = selected[0], selected[1:]
+        from fetch.race_builder import save_results_json
+
+        save_results_json(
+            workflow.ROOT,
+            "nar",
+            TEST_DATE,
+            [
+                {
+                    "venue": first["venue"],
+                    "race": first["race"],
+                    "trifecta": "1-2-3",
+                    "payout": 1200,
+                }
+            ],
+            source="auto_fetch",
+        )
+        with patch("orchestrator.fetch_keiba_results", return_value=[]):
+            report = workflow.run_results("nar", TEST_DATE, force=True, sync_drive=False)
+        self.assertIn("処理済みにはしません", report)
+        state = workflow.load_json(workflow.state_path("nar"))
+        self.assertFalse(
+            workflow.is_processed(
+                state, f"results:{TEST_DATE}", {"date": TEST_DATE, "sport": "nar"}
+            )
+        )
+        with_result = [
+            r for r in state["records"] if r.get("date") == TEST_DATE and r.get("result")
+        ]
+        self.assertEqual(len(with_result), 1)
+        self.assertEqual(with_result[0]["venue"], first["venue"])
+
+        remaining_payload = [
+            {
+                "venue": r["venue"],
+                "race": r["race"],
+                "trifecta": "2-3-4",
+                "payout": 800,
+            }
+            for r in rest
+        ]
+        with patch("orchestrator.fetch_keiba_results", return_value=remaining_payload):
+            second = workflow.run_results("nar", TEST_DATE, force=True, sync_drive=False)
+        self.assertNotIn("処理済みにはしません", second)
+        state = workflow.load_json(workflow.state_path("nar"))
+        self.assertTrue(
+            workflow.is_processed(
+                state, f"results:{TEST_DATE}", {"date": TEST_DATE, "sport": "nar"}
+            )
+        )
+        again = workflow.run_results("nar", TEST_DATE, force=False, sync_drive=False)
+        self.assertIn("二重登録防止", again)
+        # 取得済みは上書きしない
+        first_after = next(
+            r
+            for r in state["records"]
+            if r.get("venue") == first["venue"] and r.get("race") == first["race"]
+        )
+        self.assertEqual(first_after["result"]["trifecta"], "1-2-3")
 
 
 if __name__ == "__main__":

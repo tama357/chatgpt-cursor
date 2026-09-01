@@ -40,7 +40,11 @@ PCがオフでも動きます。時刻は日本時間です。
 | 毎日 4:00 | 前日の正式結果、Excel集計、復習、学習 |
 | 毎日 6:00 | 当日の公式出走、最大5レースずつ予想、Excel記入 |
 
-手動実行は GitHub の Actions 画面から `personal-predict` を選び、`verify-drive` / `results-yesterday` / `predict-today` を選べます。
+定期実行は GitHub Actions Variable `PERSONAL_PREDICT_ENABLED=true` のときだけ動きます。
+
+手動実行は GitHub の Actions 画面から `personal-predict` を選び、`verify-drive` / `results-yesterday` / `predict-today` を選べます。`verify-drive` はスイッチがオフでも使えます。
+
+初期移行 `bootstrap-cloud` は、原田さんの許可があるときだけ実行します。Driveの古いExcelは取得しません。
 
 最初の設定は `個人予想/DRIVE_SYNC.md` を見てください。秘密鍵は GitHub Secret にだけ置きます。
 

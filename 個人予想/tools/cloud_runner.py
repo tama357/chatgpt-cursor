@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any, Iterator
 
 from common.constants import SPORTS
+from common.job_summary import collect_day_stats, format_github_summary, write_github_summary
 from common.jst import today_str, yesterday_str
 from excel.drive_sync import (
     DriveAuthError,
@@ -22,6 +23,10 @@ from excel.drive_sync import (
 
 class CloudLockError(RuntimeError):
     pass
+
+
+class CloudJobError(RuntimeError):
+    """GitHub Actions を失敗終了させる。"""
 
 
 @contextmanager
@@ -69,15 +74,90 @@ def _push(base_dir: Path) -> str:
     lines.append(excel.format_report())
     data = push_learning_data(base_dir)
     lines.append(data.format_report())
+    text = "\n".join(lines)
     if excel.failed or data.failed:
-        lines.append("⚠ Drive保存に失敗したファイルがあります。ローカル結果は残しています。")
-    return "\n".join(lines)
+        raise CloudJobError(
+            text + "\n\nDrive保存に失敗したファイルがあります。GitHub Actions を失敗終了します。"
+        )
+    return text
 
 
 def run_verify_drive(base_dir: Path) -> str:
-    """書き込みなし。認証と既存6ファイルの読み取りだけ。"""
+    """書き込みなし。認証と既存6ファイルの読み取りだけ。1件でも失敗したら例外。"""
     report = verify_excel_readable(base_dir)
-    return format_read_only_report(report)
+    text = format_read_only_report(report)
+    write_github_summary(
+        format_github_summary(
+            title="Drive読み取り確認（書き込みなし）",
+            target_date="-",
+            drive_ok=report.failed == 0 and report.succeeded >= 6,
+            drive_note=f"成功 {report.succeeded} / 失敗 {report.failed}",
+            extra_lines=text.splitlines(),
+        )
+    )
+    if report.failed or report.succeeded < 6:
+        raise CloudJobError(text + "\n\n1件以上の読み取りに失敗したため終了コード1で終了します。")
+    return text
+
+
+def run_bootstrap_cloud(base_dir: Path, *, confirm: bool) -> str:
+    """9月2日のローカルExcelと学習データをDriveへ一度だけ送る。古いExcelは取得しない。"""
+    if not confirm:
+        raise CloudJobError(
+            "初期移行は原田さんの明示許可と --i-confirm-bootstrap が必要です。実行していません。"
+        )
+    excel_dir = base_dir / "excel"
+    from excel.drive_sync import load_drive_config
+
+    config = load_drive_config(base_dir)
+    missing = []
+    for spec in config.get("files", {}).values():
+        path = excel_dir / spec["local_name"]
+        if not path.exists():
+            missing.append(spec["local_name"])
+    if missing:
+        raise CloudJobError("初期移行に必要なExcelがありません: " + ", ".join(missing))
+
+    lines = [
+        "## 初期移行 bootstrap-cloud",
+        "Driveから古いExcelは取得していません（9月2日の記録を消さないため）。",
+        "既存6ファイルをID指定で上書きします。同名ファイルは新規作成しません。",
+    ]
+    excel = sync_excel_files(base_dir)
+    lines.append(excel.format_report())
+    data = push_learning_data(base_dir)
+    lines.append(data.format_report())
+    text = "\n".join(lines)
+    write_github_summary(
+        format_github_summary(
+            title="初期移行 bootstrap-cloud",
+            target_date="2026-09-02",
+            drive_ok=excel.failed == 0 and data.failed == 0,
+            extra_lines=lines,
+        )
+    )
+    if excel.failed or data.failed:
+        raise CloudJobError(text + "\n\n初期移行のDrive保存に失敗したため終了コード1で終了します。")
+    return text
+
+
+def _finish_summary(
+    base_dir: Path,
+    *,
+    title: str,
+    date: str,
+    drive_ok: bool,
+    extra: list[str],
+) -> None:
+    write_github_summary(
+        format_github_summary(
+            title=title,
+            target_date=date,
+            stats=collect_day_stats(base_dir, date),
+            drive_ok=drive_ok,
+            extra_lines=extra,
+        )
+    )
 
 
 def run_cloud_predict(
@@ -99,8 +179,20 @@ def run_cloud_predict(
                 run_predict_fn=run_predict_fn,
             )
         )
-        parts.append(_push(base_dir))
-        return "\n\n".join(parts)
+        try:
+            parts.append(_push(base_dir))
+            text = "\n\n".join(parts)
+            _finish_summary(base_dir, title="当日予想", date=date, drive_ok=True, extra=[])
+            return text
+        except CloudJobError as exc:
+            _finish_summary(
+                base_dir,
+                title="当日予想",
+                date=date,
+                drive_ok=False,
+                extra=[str(exc)],
+            )
+            raise
 
 
 def run_cloud_results(
@@ -122,8 +214,20 @@ def run_cloud_results(
                 **kwargs,
             )
         )
-        parts.append(_push(base_dir))
-        return "\n\n".join(parts)
+        try:
+            parts.append(_push(base_dir))
+            text = "\n\n".join(parts)
+            _finish_summary(base_dir, title="前日結果", date=date, drive_ok=True, extra=[])
+            return text
+        except CloudJobError as exc:
+            _finish_summary(
+                base_dir,
+                title="前日結果",
+                date=date,
+                drive_ok=False,
+                extra=[str(exc)],
+            )
+            raise
 
 
 def sports() -> tuple[str, ...]:

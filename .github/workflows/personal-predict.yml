@@ -2,6 +2,7 @@
 # cron は UTC。日本時間は通年 UTC+9（サマータイムなし）。
 #   19:00 UTC = 翌 04:00 JST（前日結果）
 #   21:00 UTC = 翌 06:00 JST（当日予想）
+# 定期実行は GitHub Actions Variable PERSONAL_PREDICT_ENABLED=true のときだけ動く。
 name: personal-predict
 
 on:
@@ -19,8 +20,13 @@ on:
           - verify-drive
           - results-yesterday
           - predict-today
+          - bootstrap-cloud
       date:
         description: "対象日 YYYY-MM-DD（空なら日本時間の今日／昨日）"
+        required: false
+        type: string
+      confirm:
+        description: "bootstrap-cloud のときだけ migrate-sept2 と入力。普段は空"
         required: false
         type: string
 
@@ -66,7 +72,29 @@ jobs:
             echo "job=predict-today" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Check schedule switch
+        id: gate
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          ENABLED: ${{ vars.PERSONAL_PREDICT_ENABLED }}
+          JOB: ${{ steps.decide.outputs.job }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = "schedule" ] && [ "${ENABLED}" != "true" ]; then
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            {
+              echo "## 個人予想"
+              echo "定期実行スイッチがオフのため、4:00 / 6:00 の処理は行いません。"
+              echo "Variables の PERSONAL_PREDICT_ENABLED を true にすると有効になります。"
+              echo "verify-drive はスイッチがオフでも手動実行できます。"
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "定期実行スイッチがオフです（PERSONAL_PREDICT_ENABLED!=true）"
+          else
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Place service account (never print)
+        if: steps.gate.outputs.enabled == 'true' || steps.decide.outputs.job == 'verify-drive'
         env:
           GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON }}
         run: |
@@ -91,7 +119,7 @@ jobs:
         run: python3 個人予想/tools/workflow.py verify-drive
 
       - name: Cloud results (JST 4:00)
-        if: steps.decide.outputs.job == 'results-yesterday'
+        if: steps.gate.outputs.enabled == 'true' && steps.decide.outputs.job == 'results-yesterday'
         env:
           TARGET_DATE: ${{ inputs.date }}
         run: |
@@ -103,7 +131,7 @@ jobs:
           fi
 
       - name: Cloud predict (JST 6:00)
-        if: steps.decide.outputs.job == 'predict-today'
+        if: steps.gate.outputs.enabled == 'true' && steps.decide.outputs.job == 'predict-today'
         env:
           TARGET_DATE: ${{ inputs.date }}
         run: |
@@ -113,3 +141,15 @@ jobs:
           else
             python3 個人予想/tools/workflow.py cloud-predict
           fi
+
+      - name: Bootstrap cloud (no Drive pull)
+        if: steps.decide.outputs.job == 'bootstrap-cloud'
+        env:
+          CONFIRM: ${{ inputs.confirm }}
+        run: |
+          set -euo pipefail
+          if [ "${CONFIRM}" != "migrate-sept2" ]; then
+            echo "初期移行は確認語が migrate-sept2 のときだけ実行します。実行していません。"
+            exit 1
+          fi
+          python3 個人予想/tools/workflow.py bootstrap-cloud --i-confirm-bootstrap

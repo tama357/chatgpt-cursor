@@ -66,6 +66,28 @@ def ensure_race_data(base_dir: Path, sport: str, target_date: str) -> tuple[list
     )
 
 
+def _result_key(row: dict[str, Any]) -> tuple[Any, Any]:
+    race = row.get("race")
+    try:
+        race = int(race)
+    except (TypeError, ValueError):
+        pass
+    return (row.get("venue"), race)
+
+
+def _merge_result_rows(
+    existing: list[dict[str, Any]], newly: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    merged: dict[tuple[Any, Any], dict[str, Any]] = {}
+    for row in existing:
+        merged[_result_key(row)] = row
+    for row in newly:
+        key = _result_key(row)
+        if key not in merged:
+            merged[key] = row
+    return list(merged.values())
+
+
 def ensure_result_data(
     base_dir: Path,
     sport: str,
@@ -73,39 +95,58 @@ def ensure_result_data(
     day_records: list[dict[str, Any]],
 ) -> tuple[list[dict[str, Any]], str]:
     path = result_data_path(base_dir, sport, target_date)
+    existing: list[dict[str, Any]] = []
     if is_official_result_file(path):
-        results = load_official_results(path)
-        return results, f"✅ {SPORT_LABELS.get(sport, sport)}: 結果JSONあり（{path.name}）"
-    if path.exists():
+        existing = load_official_results(path)
+    elif path.exists():
         leftover = load_results_payload(path)
         if is_sample_payload(leftover, path):
-            # 残っていても本番では使わない。公式取得へ進む。
             pass
 
-    pending = [
+    have = {_result_key(r) for r in existing}
+    pending = []
+    for record in day_records:
+        if record.get("skipped") or not record.get("tickets"):
+            continue
+        if (record.get("result") or {}).get("trifecta"):
+            continue
+        if _result_key(record) in have:
+            continue
+        pending.append(record)
+
+    newly: list[dict[str, Any]] = []
+    if pending:
+        if sport == "kyotei":
+            newly = fetch_results_for_predictions(pending)
+        elif sport in {"jra", "nar"}:
+            circuit = "nar" if sport == "nar" else "jra"
+            newly = fetch_keiba_results(pending, circuit)
+
+    merged = _merge_result_rows(existing, newly)
+    if newly:
+        save_results_json(base_dir, sport, target_date, merged, source="auto_fetch")
+
+    label = SPORT_LABELS.get(sport, sport)
+    needed = [
         r
         for r in day_records
-        if not r.get("skipped") and r.get("tickets") and not r.get("result")
+        if not r.get("skipped") and r.get("tickets")
     ]
-    if not pending:
-        return [], f"ℹ {SPORT_LABELS.get(sport, sport)}: 結果反映待ちの予想がありません。"
+    needed_keys = {_result_key(r) for r in needed}
+    got_keys = {_result_key(r) for r in merged}
+    missing = needed_keys - got_keys
 
-    if sport == "kyotei":
-        results = fetch_results_for_predictions(pending)
-    elif sport in {"jra", "nar"}:
-        circuit = "nar" if sport == "nar" else "jra"
-        results = fetch_keiba_results(pending, circuit)
-    else:
-        results = []
-
-    if not results:
+    if not needed:
+        return [], f"ℹ {label}: 結果反映待ちの予想がありません。"
+    if not merged:
         return [], (
-            f"【取得失敗】{SPORT_LABELS.get(sport, sport)}の正式結果を取得できませんでした。"
+            f"【取得失敗】{label}の正式結果を取得できませんでした。"
             " 推測では記入しません。この競技の結果処理は中止します。"
         )
-
-    save_results_json(base_dir, sport, target_date, results, source="auto_fetch")
-    return results, f"✅ {SPORT_LABELS.get(sport, sport)}: {len(results)}レースの結果JSONを作成（{path.name}）"
+    if missing:
+        names = ", ".join(f"{venue}{race}R" for venue, race in sorted(missing, key=lambda x: str(x)))
+        return merged, f"✅ {label}: {len(merged)}レース取得。未取得あり: {names}"
+    return merged, f"✅ {label}: {len(merged)}レースの正式結果を確認（{path.name}）"
 
 
 def _append_drive_sync(base_dir: Path, lines: list[str], *, keys: list[str] | None = None) -> None:
@@ -188,9 +229,16 @@ def run_results_yesterday(
         elif run_results_fn is not None:
             lines.append(run_results_fn(sport, date, force=force, sync_drive=False))
 
-        if run_learning_fn is not None:
+        still_pending = [
+            r
+            for r in find_day_records_fn(load_state_fn(sport), date)
+            if not r.get("skipped") and r.get("tickets") and not (r.get("result") or {}).get("trifecta")
+        ]
+        if run_learning_fn is not None and not still_pending:
             lines.append(f"\n### {label} 学習レポート（他競技と混ぜない）\n")
             lines.append(run_learning_fn(sport))
+        elif still_pending:
+            lines.append(f"\n{label}は未取得があるため、この日付を処理済みにも学習確定にもしません。")
 
     lines.append(_excel_list(base_dir))
     _append_drive_sync(base_dir, lines)

@@ -38,8 +38,11 @@
 3. ChatGPTフォルダを、サービスアカウントのメールアドレスに **編集者** で共有する
 4. GitHub の Settings → Secrets and variables → Actions に `GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON` を追加し、JSON全文を貼る
 5. リポジトリの Actions を有効化する
-6. 最初は Actions の手動実行（`workflow_dispatch`）で **verify-drive** だけ走らせる（書き込みなし）
-7. 6ファイルの読み取り成功を確認してから、毎日の定期実行を使う
+6. GitHub の Settings → Secrets and variables → Actions → **Variables** に `PERSONAL_PREDICT_ENABLED` を作る。値は最初 `false` のままにする
+7. 最初は Actions の手動実行で **verify-drive** だけ走らせる（スイッチが false でも可。書き込みなし）
+8. 6ファイルの読み取り成功を確認する
+9. 原田さんが許可したあと、Cursor 側で初期移行 `bootstrap-cloud` を1回だけ行う（Driveの古いExcelは取得しない）
+10. 初期移行成功後、Variable を `true` にして 4:00 / 6:00 の定期実行を有効化する
 
 ## クラウド実行の動き
 
@@ -50,10 +53,14 @@
 
 開始時に Drive から最新Excelと学習データを取得し、終了時に Excel・state・学習を Drive へ保存します。
 
+- 定期実行は `PERSONAL_PREDICT_ENABLED=true` のときだけ動く。未設定または false なら 4:00 / 6:00 は何もしない
+- `verify-drive` はスイッチがオフでも手動実行できる。1件でも読めなければ失敗終了する
+- Excel または学習データの保存が1件でも失敗したら失敗終了する
 - Excel は既存IDを更新するだけ。無い場合は作らず失敗にする
 - 学習JSONが未作成なら、初回だけ固定名で保存する（Excelは作らない）
 - 日々のExcel更新では PR を作らない
 - 同時実行は GitHub Actions の concurrency とファイルロックで防ぐ
+- 結果が一部だけ取れた日付は処理済みにしない。次回は未取得レースだけ再取得する
 
 ## 報告ルール
 

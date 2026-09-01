@@ -35,6 +35,10 @@ class CloudActionsTest(ProductionDataGuardMixin, unittest.TestCase):
         self.assertNotIn("gh pr create", text)
         self.assertIn("pull-requests: none", text)
         self.assertIn("persist-credentials: false", text)
+        self.assertIn("PERSONAL_PREDICT_ENABLED", text)
+        self.assertIn("GITHUB_STEP_SUMMARY", text)
+        self.assertIn("bootstrap-cloud", text)
+        self.assertIn("migrate-sept2", text)
 
     def test_today_str_uses_jst(self):
         from datetime import datetime
@@ -170,6 +174,82 @@ class CloudActionsTest(ProductionDataGuardMixin, unittest.TestCase):
         record_fetch_failure(state, date="2026-09-02", reason="取得失敗")
         self.assertEqual(state["fetch_failures"][0]["reason"], "取得失敗")
         self.assertEqual(state["sport"], "nar")
+
+    def test_verify_drive_fails_when_one_file_unreadable(self):
+        import importlib.util
+
+        spec = importlib.util.spec_from_file_location(
+            "personal_workflow_verify", ROOT / "tools" / "workflow.py"
+        )
+        wf = importlib.util.module_from_spec(spec)
+        assert spec.loader is not None
+        spec.loader.exec_module(wf)
+
+        class BadReport:
+            failed = 1
+            succeeded = 5
+
+        with (
+            patch.object(wf, "run_verify_drive", side_effect=wf.CloudJobError("読めません")),
+        ):
+            code = wf.main(["verify-drive"])
+        self.assertEqual(code, 1)
+
+    def test_push_raises_on_drive_save_failure(self):
+        from cloud_runner import CloudJobError, _push
+
+        class FailReport:
+            failed = 1
+            succeeded = 5
+
+            def format_report(self):
+                return "failed"
+
+        with (
+            patch.object(drive_sync, "sync_excel_files", return_value=FailReport()),
+            patch.object(drive_sync, "push_learning_data", return_value=FailReport()),
+        ):
+            with self.assertRaises(CloudJobError):
+                _push(ROOT)
+
+    def test_bootstrap_refuses_without_confirm_and_never_pulls(self):
+        from cloud_runner import CloudJobError, run_bootstrap_cloud
+
+        with (
+            patch.object(drive_sync, "pull_excel_files") as mock_pull,
+            patch.object(drive_sync, "sync_excel_files") as mock_sync,
+        ):
+            with self.assertRaises(CloudJobError):
+                run_bootstrap_cloud(ROOT, confirm=False)
+            mock_pull.assert_not_called()
+            mock_sync.assert_not_called()
+
+    def test_parse_official_result_html_jra_and_nar(self):
+        jra_html = (
+            '<tr class="Tan3"> <th>3連単</th> <td class="Result"> '
+            "<ul> <li><span>1</span></li> <li><span>4</span></li> "
+            '<li><span>7</span></li> </ul> </td> '
+            '<td class="Payout"><span>21,300円</span></td>'
+        )
+        nar_html = (
+            '<tr class="Tan3"> <th>3連単</th> <td  class="Result"> '
+            "<ul> <li><span>6</span></li> <li><span>4</span></li> "
+            '<li><span>10</span></li> </ul>   </td> '
+            '<td class="Payout"><span>490円</span></td>'
+        )
+        jra = parse_result_trifecta(jra_html)
+        nar = parse_result_trifecta(nar_html)
+        self.assertEqual(jra["trifecta"], "1-4-7")
+        self.assertEqual(jra["payout"], 21300)
+        self.assertEqual(nar["trifecta"], "6-4-10")
+        self.assertEqual(nar["payout"], 490)
+
+    def test_official_trifecta_with_10_is_not_a_hit(self):
+        from common.tickets import check_hit
+
+        self.assertFalse(
+            check_hit("6-4-10", [{"type": "本線", "pick": "6-4-123"}])
+        )
 
 
 if __name__ == "__main__":

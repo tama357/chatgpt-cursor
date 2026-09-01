@@ -5,6 +5,7 @@ from dataclasses import dataclass
 
 PICK_RE = re.compile(r"^([1-9])-([1-9])-([1-9]+)$")
 TRIFECTA_RE = re.compile(r"^[1-9]-[1-9]-[1-9]$")
+OFFICIAL_TRIFECTA_RE = re.compile(r"^(?:[1-9]|1[0-8])-(?:[1-9]|1[0-8])-(?:[1-9]|1[0-8])$")
 
 
 class ValidationError(ValueError):
@@ -58,8 +59,11 @@ def expand_tickets(tickets: list[dict[str, str]]) -> list[ExpandedTicket]:
 
 
 def check_hit(trifecta: str, tickets: list[dict[str, str]]) -> bool:
-    if not TRIFECTA_RE.fullmatch(trifecta):
+    if not OFFICIAL_TRIFECTA_RE.fullmatch(trifecta):
         raise ValidationError(f"三連単結果の形式が不正です: {trifecta}")
+    if not TRIFECTA_RE.fullmatch(trifecta):
+        # 公式が10番以上を含む場合、1〜9の買い目とは一致しない。
+        return False
     picks = expand_tickets(tickets)
     all_combos = {combo for ticket in picks for combo in ticket.combinations}
     return trifecta in all_combos
