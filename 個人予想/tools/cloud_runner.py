@@ -2,15 +2,20 @@
 
 from __future__ import annotations
 
-import fcntl
 import os
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Iterator
 
+try:
+    import fcntl
+except ImportError:  # Windows のローカル確認用。クラウド実行は Ubuntu。
+    fcntl = None  # type: ignore[assignment]
+
 from common.constants import SPORTS
 from common.job_summary import collect_day_stats, format_github_summary, write_github_summary
 from common.jst import today_str, yesterday_str
+from common.state import production_state_problems
 from excel.drive_sync import (
     DriveAuthError,
     format_read_only_report,
@@ -32,6 +37,9 @@ class CloudJobError(RuntimeError):
 
 @contextmanager
 def exclusive_lock(base_dir: Path) -> Iterator[None]:
+    if fcntl is None:
+        yield
+        return
     lock_dir = base_dir / ".drive"
     lock_dir.mkdir(parents=True, exist_ok=True)
     lock_path = lock_dir / "cloud.lock"
@@ -117,9 +125,7 @@ def _missing_bootstrap_files(base_dir: Path) -> list[str]:
         path = base_dir / "excel" / spec["local_name"]
         if not path.exists():
             missing.append(f"excel/{spec['local_name']}")
-    for rel in REQUIRED_BOOTSTRAP_STATES:
-        if not (base_dir / rel).exists():
-            missing.append(rel)
+    missing.extend(production_state_problems(base_dir))
     return missing
 
 
@@ -135,10 +141,13 @@ def run_bootstrap_cloud(base_dir: Path, *, confirm: bool) -> str:
             "GitHub Actions の checkout には、Windows ローカルの Git管理外 state がありません。"
             " 初期移行は PC 版 Cursor から実行してください。"
             if os.environ.get("GITHUB_ACTIONS") == "true"
-            else "PC版 Cursor の作業フォルダに、9月2日の state と Excel があるか確認してください。"
+            else (
+                "PC版 Cursor で init-state を実行し、"
+                "data/jra・data/nar・data/kyotei の正規stateと Excel があるか確認してください。"
+            )
         )
         raise CloudJobError(
-            "初期移行に必要なファイルがありません: "
+            "初期移行に必要な正規state / Excelがありません: "
             + ", ".join(missing)
             + "\n"
             + hint
@@ -159,7 +168,7 @@ def run_bootstrap_cloud(base_dir: Path, *, confirm: bool) -> str:
     write_github_summary(
         format_github_summary(
             title="初期移行 bootstrap-cloud",
-            target_date="2026-09-02",
+            target_date="2026-09-03",
             drive_ok=excel.failed == 0 and data.failed == 0,
             extra_lines=lines,
         )
@@ -197,6 +206,16 @@ def _finish_summary(
     )
 
 
+def _require_ready_states(base_dir: Path) -> None:
+    problems = production_state_problems(base_dir)
+    if problems:
+        raise CloudJobError(
+            "正規stateが揃っていないため処理を中止しました: "
+            + ", ".join(problems)
+            + "\n出走取得・結果取得・Excel更新・state更新・Drive保存は行っていません。"
+        )
+
+
 def run_cloud_predict(
     base_dir: Path,
     *,
@@ -208,6 +227,7 @@ def run_cloud_predict(
     date = target_date or today_str()
     with exclusive_lock(base_dir):
         parts = [_pull(base_dir)]
+        _require_ready_states(base_dir)
         parts.append(
             run_predict_today_fn(
                 base_dir,
@@ -243,6 +263,7 @@ def run_cloud_results(
     date = target_date or yesterday_str()
     with exclusive_lock(base_dir):
         parts = [_pull(base_dir)]
+        _require_ready_states(base_dir)
         parts.append(
             run_results_yesterday_fn(
                 base_dir,

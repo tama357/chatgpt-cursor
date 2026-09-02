@@ -38,12 +38,13 @@
 1. サービスアカウントを作成し、ChatGPTフォルダを編集者で共有する
 2. GitHub Secret に `GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON` を設定する
 3. Variable `PERSONAL_PREDICT_ENABLED` を `false` にする
-4. PR #8 を main へマージする（定期実行は無効なので 4:00 / 6:00 は動かない）
+4. PR を main へマージする（定期実行は無効なので 4:00 / 6:00 は動かない）
 5. Actions で `verify-drive` を手動実行する（書き込みなし）
-6. 6ファイルの読み取り成功後、**PC版 Cursor** から現在の Excel・state・学習データを一度だけ初期移行する
-7. Drive上の9月2日Excelと state を確認する
-8. Variable を `true` にする
-9. 4:00・6:00 の定期実行を開始する
+6. PC版 Cursor で `init-state` を実行し、3つの正規stateを作る（既存があれば上書きせず失敗）
+7. 6ファイルの読み取り成功後、**PC版 Cursor** から現在の Excel・state・学習データを一度だけ初期移行する
+8. Drive上のExcelと state を確認する
+9. Variable を `true` にする
+10. 4:00・6:00 の定期実行を開始する
 
 初期移行は GitHub Actions では行いません。Actions の checkout には、Windows ローカルの Git管理外 state が無いためです。
 
@@ -55,7 +56,11 @@
 - `data/kyotei/state.json`
 - 各学習レポート（あれば送る）
 
-state が1つでも無い場合、初期移行は失敗終了します。成功扱いしません。
+state が1つでも無い、正規stateでない、開始日が 2026-09-03 でない、または3競技の開始日が一致しない場合、初期移行は失敗終了します。成功扱いしません。
+
+開始日は **2026-09-03（JST）** です。`timezone` は `Asia/Tokyo` です。それより前の日付は結果取得・学習の対象外です。9月2日のExcel記録は残します。
+
+`init-state` は3競技のstateを一時ファイルで作って検証し、全部成功したときだけ確定します。途中で失敗したら、この実行で作ったstateは残しません。既存stateは削除・上書きしません。
 
 ## クラウド実行の動き
 
@@ -65,6 +70,8 @@ state が1つでも無い場合、初期移行は失敗終了します。成功�
 | 毎日 6:00 | `0 21 * * *` | 当日の公式出走、最大5レースずつ予想、Excel記入 |
 
 開始時に Drive から最新Excelと学習データを取得し、終了時に Excel・state・学習を Drive へ保存します。
+
+Driveから取得した直後に、3競技の正規state（開始日 2026-09-03 JST で一致）を確認します。1つでも無い・不正・開始日不一致なら、出走取得・結果取得・Excel更新・state更新・Drive保存はせず失敗終了します。`load_json` の仮stateでは続けません。
 
 - 定期実行は `PERSONAL_PREDICT_ENABLED=true` のときだけ動く。未設定または false なら 4:00 / 6:00 は何もしない
 - `verify-drive` と `bootstrap-cloud` はスイッチがオフでも手動実行できる

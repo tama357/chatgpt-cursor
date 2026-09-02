@@ -51,12 +51,17 @@ PCがオフでも動きます。時刻は日本時間です。
 ## Cursor 内部コマンド
 
 ```bash
+python3 個人予想/tools/workflow.py init-state --start-date 2026-09-03 --i-confirm-init-state
 python3 個人予想/tools/workflow.py predict-today
 python3 個人予想/tools/workflow.py results-yesterday
 python3 個人予想/tools/workflow.py verify-drive
 python3 個人予想/tools/workflow.py cloud-predict
 python3 個人予想/tools/workflow.py cloud-results
 ```
+
+`init-state` は確認フラグがあるときだけ、中央競馬・地方競馬・競艇の正規stateを新規作成します。開始日は 2026-09-03（JST）です。3つとも成功するか、この実行で作ったstateを1つも残さないかのどちらかです。既存stateは上書きしません。Excel は変更しません。
+
+クラウドの予想・結果は、Drive取得直後に3競技の正規stateを確認します。無い・不正・開始日不一致なら、出走取得やExcel・Driveへの書き込みはしません。
 
 `predict-all` は中央競馬・地方競馬・競艇の3種類です。
 

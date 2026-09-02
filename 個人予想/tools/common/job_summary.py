@@ -7,18 +7,21 @@ from pathlib import Path
 from typing import Any
 
 from common.constants import SPORT_LABELS, SPORTS
-from common.state import find_day_records, load_json
+from common.state import find_day_records, is_before_start_date, load_json
 
 
 def collect_day_stats(base_dir: Path, target_date: str) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     for sport in SPORTS:
         state = load_json(base_dir / "data" / sport / "state.json")
-        records = [
-            r
-            for r in find_day_records(state, target_date)
-            if not r.get("skipped") and r.get("tickets")
-        ]
+        if is_before_start_date(state, target_date):
+            records: list[dict[str, Any]] = []
+        else:
+            records = [
+                r
+                for r in find_day_records(state, target_date)
+                if not r.get("skipped") and r.get("tickets")
+            ]
         done = [r for r in records if (r.get("result") or {}).get("trifecta")]
         hits = [r for r in done if r.get("result", {}).get("status") == "的中"]
         stake = sum(int((r.get("result") or {}).get("stake") or 0) for r in done)

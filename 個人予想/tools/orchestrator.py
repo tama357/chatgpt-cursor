@@ -5,8 +5,22 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from common.constants import EXCEL_FILENAMES, SPORT_LABELS, SPORTS
+from common.constants import (
+    DEFAULT_START_DATE,
+    EXCEL_FILENAMES,
+    SPORT_LABELS,
+    SPORTS,
+    STATE_TIMEZONE,
+)
 from common.jst import today_str, yesterday_str
+from common.state import (
+    is_before_start_date,
+    is_canonical_state,
+    load_canonical_state,
+    require_production_states,
+    skip_before_start_message,
+)
+from common.tickets import ValidationError
 from fetch import jra as fetch_jra_mod
 from fetch import nar as fetch_nar_mod
 from fetch import kyotei as fetch_kyotei_mod
@@ -166,6 +180,23 @@ def _excel_list(base_dir: Path) -> str:
     return "\n".join(lines)
 
 
+def _ready_state(base_dir: Path, sport: str, load_state_fn=None) -> dict[str, Any]:
+    """正規stateだけを使う。load_json の仮stateでは続けない。"""
+    if load_state_fn is None:
+        return load_canonical_state(base_dir, sport)
+    state = load_state_fn(sport)
+    if (
+        not is_canonical_state(state, sport)
+        or state.get("start_date") != DEFAULT_START_DATE
+        or state.get("timezone") != STATE_TIMEZONE
+    ):
+        raise ValidationError(
+            f"data/{sport}/state.json は正規stateではありません。"
+            " 処理していません。Excelは変更していません。"
+        )
+    return state
+
+
 def run_predict_today(
     base_dir: Path,
     *,
@@ -175,11 +206,16 @@ def run_predict_today(
 ) -> str:
     """「今日の中央競馬と地方競馬と競艇を予想して」用。"""
     date = target_date or today_str()
+    require_production_states(base_dir)
     lines = [_header("今日の予想（中央競馬＋地方競馬＋競艇）", date)]
 
     for sport in SPORTS:
         label = SPORT_LABELS[sport]
         lines.append(f"\n---\n\n## {label}\n")
+        state = load_canonical_state(base_dir, sport)
+        if is_before_start_date(state, date):
+            lines.append(skip_before_start_message(state, date, kind="predict"))
+            continue
         races, status = ensure_race_data(base_dir, sport, date)
         lines.append(status)
         if not races:
@@ -209,12 +245,16 @@ def run_results_yesterday(
 ) -> str:
     """「昨日の結果を確認して」用。3競技を別々に反映。"""
     date = target_date or yesterday_str()
+    require_production_states(base_dir)
     lines = [_header("昨日の結果確認（中央競馬＋地方競馬＋競艇）", date)]
 
     for sport in SPORTS:
         label = SPORT_LABELS[sport]
         lines.append(f"\n## {label}\n")
-        state = load_state_fn(sport)
+        state = _ready_state(base_dir, sport, load_state_fn)
+        if is_before_start_date(state, date):
+            lines.append(skip_before_start_message(state, date, kind="results"))
+            continue
         day_records = find_day_records_fn(state, date)
         if not day_records:
             lines.append(f"{date} の{label}予想記録がありません。")
@@ -231,7 +271,7 @@ def run_results_yesterday(
 
         still_pending = [
             r
-            for r in find_day_records_fn(load_state_fn(sport), date)
+            for r in find_day_records_fn(_ready_state(base_dir, sport, load_state_fn), date)
             if not r.get("skipped") and r.get("tickets") and not (r.get("result") or {}).get("trifecta")
         ]
         if run_learning_fn is not None and not still_pending:

@@ -9,7 +9,7 @@ import tempfile
 from pathlib import Path
 
 SPORTS = ("jra", "nar", "kyotei")
-TEST_DATE = "2026-09-01"
+TEST_DATE = "2026-09-03"
 PRODUCTION_ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -22,16 +22,48 @@ def is_under_production_data(path: Path) -> bool:
         return False
 
 
-def snapshot_tree(root: Path) -> dict[str, dict[str, int | str]]:
+def snapshot_tree(
+    root: Path, *, skip_dir_names: frozenset[str] | tuple[str, ...] = ()
+) -> dict[str, dict[str, int | str]]:
     """root 配下の全ファイルを相対パス → size/sha256 で記録する。削除はしない。"""
     if not root.exists():
         return {}
+    skip = frozenset(skip_dir_names)
     out: dict[str, dict[str, int | str]] = {}
     for path in sorted(p for p in root.rglob("*") if p.is_file()):
+        rel_path = path.relative_to(root)
+        if any(part in skip for part in rel_path.parts):
+            continue
         data = path.read_bytes()
-        rel = path.relative_to(root).as_posix()
+        rel = rel_path.as_posix()
         out[rel] = {"size": len(data), "sha256": hashlib.sha256(data).hexdigest()}
     return out
+
+
+def write_canonical_states(root: Path, *, start_date: str) -> None:
+    """テスト用ルートへ正規stateを置く。本番 data には使わない。"""
+    if is_under_production_data(root / "data"):
+        raise RuntimeError("テスト用 state は本番の 個人予想/data/ に置かないでください")
+    for sport in SPORTS:
+        sport_dir = root / "data" / sport
+        sport_dir.mkdir(parents=True, exist_ok=True)
+        (sport_dir / "state.json").write_text(
+            json.dumps(
+                {
+                    "version": 2,
+                    "sport": sport,
+                    "start_date": start_date,
+                    "timezone": "Asia/Tokyo",
+                    "records": [],
+                    "processed": {},
+                    "fetch_failures": [],
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
 
 
 def seed_dummy_runtime(root: Path, *, target_date: str = TEST_DATE) -> None:
@@ -47,8 +79,11 @@ def seed_dummy_runtime(root: Path, *, target_date: str = TEST_DATE) -> None:
                 {
                     "version": 2,
                     "sport": sport,
+                    "start_date": target_date,
+                    "timezone": "Asia/Tokyo",
                     "records": [{"marker": f"keep-{sport}", "tickets": ["1-2-3"]}],
                     "processed": {},
+                    "fetch_failures": [],
                 },
                 ensure_ascii=False,
                 indent=2,
@@ -104,11 +139,18 @@ def seed_dummy_runtime(root: Path, *, target_date: str = TEST_DATE) -> None:
     )
 
 
+def _link_or_copy_dir(src: Path, dest: Path) -> None:
+    try:
+        dest.symlink_to(src, target_is_directory=True)
+    except OSError:
+        shutil.copytree(src, dest)
+
+
 def make_sandbox(src_root: Path, *, copy_excel: bool = True) -> Path:
     tmp = Path(tempfile.mkdtemp(prefix="personal-predict-test-"))
     (tmp / "data").mkdir()
-    (tmp / "examples").symlink_to(src_root / "examples", target_is_directory=True)
-    (tmp / "config").symlink_to(src_root / "config", target_is_directory=True)
+    _link_or_copy_dir(src_root / "examples", tmp / "examples")
+    _link_or_copy_dir(src_root / "config", tmp / "config")
     if copy_excel:
         shutil.copytree(
             src_root / "excel",
@@ -161,13 +203,24 @@ class ProductionDataGuardMixin:
 
     def setUp(self) -> None:
         self._production_data_snapshot = snapshot_tree(PRODUCTION_ROOT / "data")
+        self._production_excel_snapshot = snapshot_tree(
+            PRODUCTION_ROOT / "excel", skip_dir_names=frozenset({"_e2e_test"})
+        )
         self.addCleanup(self._assert_production_data_untouched)
         super().setUp()
 
     def _assert_production_data_untouched(self) -> None:
-        after = snapshot_tree(PRODUCTION_ROOT / "data")
-        if after != self._production_data_snapshot:
+        after_data = snapshot_tree(PRODUCTION_ROOT / "data")
+        after_excel = snapshot_tree(
+            PRODUCTION_ROOT / "excel", skip_dir_names=frozenset({"_e2e_test"})
+        )
+        if after_data != self._production_data_snapshot:
             raise AssertionError(
                 "本番 個人予想/data/ がテスト中に変更されました: "
-                f"before={self._production_data_snapshot} after={after}"
+                f"before={self._production_data_snapshot} after={after_data}"
+            )
+        if after_excel != self._production_excel_snapshot:
+            raise AssertionError(
+                "本番 個人予想/excel/ がテスト中に変更されました: "
+                f"before={self._production_excel_snapshot} after={after_excel}"
             )
