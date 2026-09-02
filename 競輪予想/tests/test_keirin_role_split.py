@@ -69,7 +69,9 @@ class KeirinRoleSplitTest(unittest.TestCase):
         races = self._copy_example("races_collect.example.json")
         text = flow.run_today_or_stop(self.root, "2099-01-01", races_file=races)
         self.assertIn(flow.STOP_NO_FINAL, text)
-        self.assertNotIn("本線", json.dumps(json.loads(chatgpt_io.chatgpt_input_path(self.root, "2099-01-01").read_text(encoding="utf-8")), ensure_ascii=False))
+        data = json.loads(chatgpt_io.chatgpt_input_path(self.root, "2099-01-01").read_text(encoding="utf-8"))
+        self.assertTrue(all("tickets" not in item for item in data["candidates"]))
+        self.assertNotIn("predictions", data)
 
     def test_ingest_stops_when_final_missing(self):
         text = flow.ingest_final(self.root, "2099-01-01", write_sheets=False)
@@ -88,7 +90,7 @@ class KeirinRoleSplitTest(unittest.TestCase):
         path.write_text(json.dumps(broken, ensure_ascii=False), encoding="utf-8")
         text = flow.ingest_final(self.root, "2099-01-01", final_file=path, write_sheets=False)
         self.assertIn("停止", text)
-        self.assertIn("本線", text)
+        self.assertIn("tickets", text)
 
     def test_cursor_must_not_create_prediction(self):
         with self.assertRaises(flow.CursorMustNotPredict):

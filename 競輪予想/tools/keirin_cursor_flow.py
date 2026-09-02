@@ -53,12 +53,43 @@ def load_rules(root: Path) -> dict[str, Any]:
     return load_json(root / "current_rules.json")
 
 
+def _race_number(item: dict[str, Any]) -> int:
+    if item.get("race_number") is not None:
+        return int(item["race_number"])
+    race = item.get("race")
+    if isinstance(race, int):
+        return race
+    if isinstance(race, str) and race.isdigit():
+        return int(race)
+    return 0
+
+
 def _candidate_lookup(candidates: list[dict[str, Any]]) -> dict[tuple[str, int], dict[str, Any]]:
     out: dict[tuple[str, int], dict[str, Any]] = {}
     for item in candidates:
         venue = str(item.get("venue") or "").strip()
-        race = int(item.get("race_number") or item.get("race") or 0)
-        out[(venue, race)] = item
+        out[(venue, _race_number(item))] = item
+    return out
+
+
+def _candidates_for_state(candidates: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    for item in candidates:
+        race_no = _race_number(item)
+        close_time = item.get("close_time") or item.get("deadline")
+        normalized = {
+            "venue": str(item.get("venue") or "").strip(),
+            "race": race_no,
+            "close_time": close_time,
+            "prediction_score": item.get("prediction_score"),
+            "score_breakdown": item.get("score_breakdown"),
+            "penalties": item.get("penalties") or [],
+        }
+        if item.get("selected") is not None:
+            normalized["selected"] = item.get("selected")
+        if "selection_rank" in item and item.get("selected") is True:
+            normalized["selection_rank"] = item.get("selection_rank")
+        out.append(normalized)
     return out
 
 
@@ -195,7 +226,7 @@ def ingest_final(
 
     day_payload = {
         "date": date,
-        "candidates": (input_data or {}).get("candidates") or [],
+        "candidates": _candidates_for_state((input_data or {}).get("candidates") or []),
         "predictions": predictions,
     }
     if record_fn is not None:
