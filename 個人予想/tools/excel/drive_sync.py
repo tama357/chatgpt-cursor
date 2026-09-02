@@ -16,6 +16,7 @@ from typing import Any
 
 XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 JSON_MIME = "application/json"
+FOLDER_MIME = "application/vnd.google-apps.folder"
 TOKEN_ENDPOINT = "https://oauth2.googleapis.com/token"
 DRIVE_UPLOAD_BASE = "https://www.googleapis.com/upload/drive/v3/files"
 DRIVE_API_BASE = "https://www.googleapis.com/drive/v3/files"
@@ -418,18 +419,52 @@ def _drive_download(access_token: str, file_id: str) -> bytes:
     return raw
 
 
-def _drive_find_in_folder(access_token: str, folder_id: str, name: str) -> str | None:
+def _drive_find_all_in_folder(
+    access_token: str, folder_id: str, name: str
+) -> list[dict[str, Any]]:
+    escaped = name.replace("'", "\\'")
     query = urllib.parse.quote(
-        f"'{folder_id}' in parents and name = '{name}' and trashed = false"
+        f"'{folder_id}' in parents and name = '{escaped}' and trashed = false"
     )
-    url = f"{DRIVE_API_BASE}?q={query}&fields=files(id,name)&supportsAllDrives=true&includeItemsFromAllDrives=true"
+    fields = urllib.parse.quote("files(id,name,createdTime,mimeType)")
+    url = (
+        f"{DRIVE_API_BASE}?q={query}&fields={fields}"
+        "&supportsAllDrives=true&includeItemsFromAllDrives=true"
+        "&orderBy=createdTime"
+    )
     status, raw = _http_request(url, headers={"Authorization": f"Bearer {access_token}"})
     if status != 200:
-        raise RuntimeError(f"Drive search 失敗 HTTP {status}")
+        raise RuntimeError(f"Drive search 失敗 HTTP {status}: {raw.decode('utf-8', errors='replace')}")
     files = _parse_json(raw).get("files") or []
+    return [item for item in files if isinstance(item, dict)]
+
+
+def _drive_find_in_folder(access_token: str, folder_id: str, name: str) -> str | None:
+    files = _drive_find_all_in_folder(access_token, folder_id, name)
     if not files:
         return None
     return str(files[0]["id"])
+
+
+def _drive_create_folder(access_token: str, parent_id: str, name: str) -> dict[str, Any]:
+    body = json.dumps(
+        {"name": name, "mimeType": FOLDER_MIME, "parents": [parent_id]}
+    ).encode("utf-8")
+    url = f"{DRIVE_API_BASE}?supportsAllDrives=true"
+    status, raw = _http_request(
+        url,
+        method="POST",
+        headers={
+            "Authorization": f"Bearer {access_token}",
+            "Content-Type": "application/json",
+        },
+        body=body,
+    )
+    if status not in (200, 201):
+        raise RuntimeError(
+            f"Driveフォルダ作成失敗 HTTP {status}: {raw.decode('utf-8', errors='replace')}"
+        )
+    return _parse_json(raw)
 
 
 def verify_excel_readable(

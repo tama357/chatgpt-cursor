@@ -12,15 +12,15 @@ try:
 except ImportError:  # Windows のローカル確認用。クラウド実行は Ubuntu。
     fcntl = None  # type: ignore[assignment]
 
-from common.constants import SPORTS
+from common.constants import LEARNING_JSON_UNSAVED, SPORTS
 from common.job_summary import collect_day_stats, format_github_summary, write_github_summary
 from common.jst import today_str, yesterday_str
 from common.state import production_state_problems
+from excel.drive_inbox import pull_predictions_for_date, push_inbox_for_date
 from excel.drive_sync import (
     DriveAuthError,
     format_read_only_report,
     pull_excel_files,
-    pull_learning_data,
     push_learning_data,
     sync_excel_files,
     verify_excel_readable,
@@ -70,25 +70,30 @@ def _pull(base_dir: Path) -> str:
     lines.append(excel.format_report())
     if excel.failed:
         raise DriveAuthError("既存Excel 6ファイルをDriveから取得できませんでした。新規作成はしません。")
-    data = pull_learning_data(base_dir)
-    lines.append(data.format_report())
-    if data.failed:
-        raise DriveAuthError("学習データの取得に失敗しました。")
     return "\n".join(lines)
 
 
-def _push(base_dir: Path) -> str:
-    lines = ["## Driveへ保存（実行終了）"]
+def _push_excel(base_dir: Path) -> str:
     excel = sync_excel_files(base_dir)
-    lines.append(excel.format_report())
-    data = push_learning_data(base_dir)
-    lines.append(data.format_report())
-    text = "\n".join(lines)
-    if excel.failed or data.failed:
+    text = excel.format_report()
+    if excel.failed:
         raise CloudJobError(
-            text + "\n\nDrive保存に失敗したファイルがあります。GitHub Actions を失敗終了します。"
+            text + "\n\nExcelのDrive保存に失敗したファイルがあります。GitHub Actions を失敗終了します。"
         )
     return text
+
+
+def _push_inbox(base_dir: Path, date: str, *, kinds: tuple[str, ...]) -> str:
+    report = push_inbox_for_date(base_dir, date, kinds=kinds)
+    lines = ["## 学習JSON（inbox）"]
+    if report.attempted == 0:
+        lines.append("対象の日次JSONがローカルにありません。")
+        return "\n".join(lines)
+    lines.append(report.format_report())
+    if report.failed:
+        lines.append(LEARNING_JSON_UNSAVED)
+        lines.append("Excelの成功は取り消していません。後からその日の日次JSONだけ穴埋めできます。")
+    return "\n".join(lines)
 
 
 def run_verify_drive(base_dir: Path) -> str:
@@ -207,12 +212,13 @@ def _finish_summary(
 
 
 def _require_ready_states(base_dir: Path) -> None:
+    """初期移行 bootstrap 専用。日次の予想・結果では使わない。"""
     problems = production_state_problems(base_dir)
     if problems:
         raise CloudJobError(
-            "正規stateが揃っていないため処理を中止しました: "
+            "正規stateが揃っていないため初期移行を中止しました: "
             + ", ".join(problems)
-            + "\n出走取得・結果取得・Excel更新・state更新・Drive保存は行っていません。"
+            + "\n日次の予想・結果は正規stateなしでも実行できます。"
         )
 
 
@@ -227,7 +233,6 @@ def run_cloud_predict(
     date = target_date or today_str()
     with exclusive_lock(base_dir):
         parts = [_pull(base_dir)]
-        _require_ready_states(base_dir)
         parts.append(
             run_predict_today_fn(
                 base_dir,
@@ -236,20 +241,34 @@ def run_cloud_predict(
                 run_predict_fn=run_predict_fn,
             )
         )
+        excel_ok = True
+        excel_error = ""
         try:
-            parts.append(_push(base_dir))
-            text = "\n\n".join(parts)
-            _finish_summary(base_dir, title="当日予想", date=date, drive_ok=True, extra=[])
-            return text
+            parts.append("## Driveへ保存（Excel）\n\n" + _push_excel(base_dir))
         except CloudJobError as exc:
+            excel_ok = False
+            excel_error = str(exc)
+            parts.append(str(exc))
+        parts.append(_push_inbox(base_dir, date, kinds=("predictions",)))
+        text = "\n\n".join(parts)
+        if not excel_ok:
             _finish_summary(
                 base_dir,
                 title="当日予想",
                 date=date,
                 drive_ok=False,
-                extra=[str(exc)],
+                extra=[excel_error],
             )
-            raise
+            raise CloudJobError(text)
+        inbox_failed = LEARNING_JSON_UNSAVED in text
+        _finish_summary(
+            base_dir,
+            title="当日予想",
+            date=date,
+            drive_ok=not inbox_failed,
+            extra=[LEARNING_JSON_UNSAVED] if inbox_failed else [],
+        )
+        return text
 
 
 def run_cloud_results(
@@ -263,7 +282,8 @@ def run_cloud_results(
     date = target_date or yesterday_str()
     with exclusive_lock(base_dir):
         parts = [_pull(base_dir)]
-        _require_ready_states(base_dir)
+        pulled = pull_predictions_for_date(base_dir, date)
+        parts.append("## 前日の予想JSON（inbox）\n\n" + pulled.format_report())
         parts.append(
             run_results_yesterday_fn(
                 base_dir,
@@ -272,20 +292,34 @@ def run_cloud_results(
                 **kwargs,
             )
         )
+        excel_ok = True
+        excel_error = ""
         try:
-            parts.append(_push(base_dir))
-            text = "\n\n".join(parts)
-            _finish_summary(base_dir, title="前日結果", date=date, drive_ok=True, extra=[])
-            return text
+            parts.append("## Driveへ保存（Excel）\n\n" + _push_excel(base_dir))
         except CloudJobError as exc:
+            excel_ok = False
+            excel_error = str(exc)
+            parts.append(str(exc))
+        parts.append(_push_inbox(base_dir, date, kinds=("results",)))
+        text = "\n\n".join(parts)
+        if not excel_ok:
             _finish_summary(
                 base_dir,
                 title="前日結果",
                 date=date,
                 drive_ok=False,
-                extra=[str(exc)],
+                extra=[excel_error],
             )
-            raise
+            raise CloudJobError(text)
+        inbox_failed = LEARNING_JSON_UNSAVED in text
+        _finish_summary(
+            base_dir,
+            title="前日結果",
+            date=date,
+            drive_ok=not inbox_failed,
+            extra=[LEARNING_JSON_UNSAVED] if inbox_failed else [],
+        )
+        return text
 
 
 def sports() -> tuple[str, ...]:

@@ -18,6 +18,12 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(ROOT / "tools"))
 from common.constants import EXCEL_FILENAMES, MISS_TYPE_MAP, MISS_TYPE_NONE, SPORTS  # noqa: E402
+from common.daily_json import (  # noqa: E402
+    apply_results_doc_to_records,
+    load_predictions_doc,
+    load_results_doc,
+    records_from_predictions_doc,
+)
 from excel.mapping import load_entry_mapping, load_summary_mapping  # noqa: E402
 from test_fixtures import (  # noqa: E402
     TEST_DATE,
@@ -217,10 +223,10 @@ def main() -> int:
             if filled > 5:
                 failed.append(f"{sport} more than 5 races")
 
-            pred_state = workflow.load_json(workflow.state_path(sport))
+            pred_doc = load_predictions_doc(workflow.ROOT, sport, TEST_DATE)
             pred_records_by_number = {
                 r["number"]: r
-                for r in pred_state.get("records", [])
+                for r in records_from_predictions_doc(pred_doc)
                 if r.get("date") == TEST_DATE and r.get("tickets") and r.get("number")
             }
             mapping = load_entry_mapping(entry, SHEET)
@@ -271,15 +277,18 @@ def main() -> int:
             if apply_check[f"{sport}_formula_errors"]:
                 failed.append(f"{sport} formula errors")
 
-            review_state = workflow.load_json(workflow.state_path(sport))
-            reviewed = [r for r in review_state.get("records", []) if r.get("review")]
+            result_records = records_from_predictions_doc(pred_doc)
+            apply_results_doc_to_records(
+                result_records, load_results_doc(workflow.ROOT, sport, TEST_DATE)
+            )
+            reviewed = [r for r in result_records if r.get("review")]
             apply_check[f"{sport}_review_count"] = len(reviewed)
             if not reviewed:
                 failed.append(f"{sport} review missing")
 
             with_result = {
                 r["number"]: r
-                for r in review_state.get("records", [])
+                for r in result_records
                 if r.get("date") == TEST_DATE and r.get("result") and r.get("number")
             }
             wb_check2 = load_workbook(entry, data_only=True)
@@ -335,10 +344,14 @@ def main() -> int:
         if chatwork:
             failed.append("chatwork referenced")
 
-        jra_state = workflow.load_json(workflow.state_path("jra"))
-        nar_state = workflow.load_json(workflow.state_path("nar"))
-        jra_venues = {r.get("venue") for r in jra_state.get("records", []) if r.get("tickets")}
-        nar_venues = {r.get("venue") for r in nar_state.get("records", []) if r.get("tickets")}
+        jra_venues = {
+            r.get("venue")
+            for r in records_from_predictions_doc(load_predictions_doc(workflow.ROOT, "jra", TEST_DATE))
+        }
+        nar_venues = {
+            r.get("venue")
+            for r in records_from_predictions_doc(load_predictions_doc(workflow.ROOT, "nar", TEST_DATE))
+        }
         separated = bool(jra_venues) and bool(nar_venues) and not (jra_venues & nar_venues)
         report["checks"].append(
             {

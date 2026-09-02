@@ -6,28 +6,45 @@ import os
 from pathlib import Path
 from typing import Any
 
-from common.constants import SPORT_LABELS, SPORTS
-from common.state import find_day_records, is_before_start_date, load_json
+from common.constants import DAY_STATUS_FETCH_FAILED, SPORT_LABELS, SPORTS
+from common.daily_json import (
+    has_predicted_races,
+    is_before_learning_start,
+    load_predictions_doc,
+    load_results_doc,
+    records_from_predictions_doc,
+)
 
 
 def collect_day_stats(base_dir: Path, target_date: str) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     for sport in SPORTS:
-        state = load_json(base_dir / "data" / sport / "state.json")
-        if is_before_start_date(state, target_date):
+        if is_before_learning_start(target_date):
             records: list[dict[str, Any]] = []
+            pred_doc = None
+            results_doc = None
         else:
-            records = [
-                r
-                for r in find_day_records(state, target_date)
-                if not r.get("skipped") and r.get("tickets")
-            ]
-        done = [r for r in records if (r.get("result") or {}).get("trifecta")]
-        hits = [r for r in done if r.get("result", {}).get("status") == "的中"]
-        stake = sum(int((r.get("result") or {}).get("stake") or 0) for r in done)
-        payout = sum(int((r.get("result") or {}).get("payout") or 0) for r in done)
+            pred_doc = load_predictions_doc(base_dir, sport, target_date)
+            results_doc = load_results_doc(base_dir, sport, target_date)
+            records = records_from_predictions_doc(pred_doc) if pred_doc else []
+        done_ids = {
+            str(row.get("race_id"))
+            for row in (results_doc or {}).get("races") or []
+            if isinstance(row, dict) and row.get("status") in {"的中", "ハズレ"}
+        }
+        done = [r for r in records if str(r.get("race_id")) in done_ids]
+        hits = [
+            r
+            for r in (results_doc or {}).get("races") or []
+            if isinstance(r, dict) and r.get("status") == "的中"
+        ]
+        stake = sum(int(r.get("stake") or 0) for r in (results_doc or {}).get("races") or [] if isinstance(r, dict))
+        payout = sum(int(r.get("payout") or 0) for r in (results_doc or {}).get("races") or [] if isinstance(r, dict))
         points = sum(int(r.get("ticket_count") or 0) for r in records)
         pending = len(records) - len(done)
+        fetch_failures = []
+        if pred_doc and pred_doc.get("day_status") == DAY_STATUS_FETCH_FAILED:
+            fetch_failures = [{"date": target_date, "reason": "取得失敗"}]
         rows.append(
             {
                 "sport": sport,
@@ -42,11 +59,8 @@ def collect_day_stats(base_dir: Path, target_date: str) -> list[dict[str, Any]]:
                 "payout": payout,
                 "hit_rate": (len(hits) / len(done) * 100) if done else None,
                 "recovery": (payout / stake * 100) if stake else None,
-                "fetch_failures": [
-                    f
-                    for f in (state.get("fetch_failures") or [])
-                    if isinstance(f, dict) and f.get("date") == target_date
-                ],
+                "fetch_failures": fetch_failures,
+                "predicted": has_predicted_races(pred_doc),
             }
         )
     return rows
@@ -65,7 +79,7 @@ def format_github_summary(
     if drive_ok is True:
         lines.append("- Drive更新: 成功")
     elif drive_ok is False:
-        lines.append("- Drive更新: 失敗")
+        lines.append("- Drive更新: 失敗または学習JSON未保存")
     if drive_note:
         lines.append(f"- Driveメモ: {drive_note}")
     if stats:
@@ -90,6 +104,8 @@ def format_github_summary(
                 lines.append(f"- {row['label']} 選定レース: {', '.join(row['races'])}")
             if row["results_pending"]:
                 lines.append(f"- {row['label']}: 未取得 {row['results_pending']}レース（処理済みにしていません）")
+            if row.get("fetch_failures"):
+                lines.append(f"- {row['label']}: 取得失敗あり")
     if extra_lines:
         lines.append("")
         lines.extend(extra_lines)
@@ -108,3 +124,4 @@ def write_github_summary(text: str) -> None:
         handle.write(text)
         if not text.endswith("\n"):
             handle.write("\n")
+

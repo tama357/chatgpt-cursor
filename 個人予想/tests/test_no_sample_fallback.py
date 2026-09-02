@@ -89,9 +89,12 @@ class NoSampleFallbackTest(ProductionDataGuardMixin, unittest.TestCase):
         self.assertNotIn("中山", report)
         self.assertNotIn("阪神", report)
         self.assertNotIn("新潟", report)
-        state = workflow.load_json(workflow.state_path("jra"))
-        selected = [r for r in state.get("records", []) if r.get("tickets")]
-        self.assertEqual(selected, [])
+        from common.daily_json import load_predictions_doc, records_from_predictions_doc
+
+        doc = load_predictions_doc(workflow.ROOT, "jra", TEST_DATE)
+        self.assertIsNotNone(doc)
+        self.assertEqual(records_from_predictions_doc(doc), [])
+        self.assertEqual(doc.get("races"), [])
 
     def test_examples_only_when_allow_sample_true(self):
         with patch.object(

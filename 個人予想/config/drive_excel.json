@@ -39,6 +39,21 @@
       "drive_title": "競艇_予想集計シート_2026年9月.xlsx"
     }
   },
+  "learning_inbox": {
+    "root_name": "予想学習",
+    "inbox_name": "inbox",
+    "sports": {
+      "jra": {
+        "folder_name": "中央競馬"
+      },
+      "nar": {
+        "folder_name": "地方競馬"
+      },
+      "kyotei": {
+        "folder_name": "競艇"
+      }
+    }
+  },
   "data_files": {
     "jra_state": {
       "drive_name": "jra_state.json",

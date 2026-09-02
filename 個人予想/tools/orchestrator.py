@@ -10,17 +10,10 @@ from common.constants import (
     EXCEL_FILENAMES,
     SPORT_LABELS,
     SPORTS,
-    STATE_TIMEZONE,
 )
 from common.jst import today_str, yesterday_str
-from common.state import (
-    is_before_start_date,
-    is_canonical_state,
-    load_canonical_state,
-    require_production_states,
-    skip_before_start_message,
-)
-from common.tickets import ValidationError
+from common.daily_json import is_before_learning_start
+from common.state import skip_before_start_message
 from fetch import jra as fetch_jra_mod
 from fetch import nar as fetch_nar_mod
 from fetch import kyotei as fetch_kyotei_mod
@@ -166,8 +159,9 @@ def ensure_result_data(
 def _append_drive_sync(base_dir: Path, lines: list[str], *, keys: list[str] | None = None) -> None:
     lines.append(
         "\n\n## Google Drive\n\n"
-        "この段階ではExcelをDriveへ送っていません。"
-        " クラウド実行（GitHub Actions）では、ジョブ終了時に既存6ファイルをID指定で上書き保存します。"
+        "ExcelのDrive反映はクラウド実行の終了時に行います。"
+        " 学習用の日次JSONは各競技の inbox へ保存します。"
+        " 正規state（jra_state.json 等）は日次ジョブから更新しません。"
         " 日々のExcel更新ではPRを作りません。"
     )
 
@@ -180,21 +174,8 @@ def _excel_list(base_dir: Path) -> str:
     return "\n".join(lines)
 
 
-def _ready_state(base_dir: Path, sport: str, load_state_fn=None) -> dict[str, Any]:
-    """正規stateだけを使う。load_json の仮stateでは続けない。"""
-    if load_state_fn is None:
-        return load_canonical_state(base_dir, sport)
-    state = load_state_fn(sport)
-    if (
-        not is_canonical_state(state, sport)
-        or state.get("start_date") != DEFAULT_START_DATE
-        or state.get("timezone") != STATE_TIMEZONE
-    ):
-        raise ValidationError(
-            f"data/{sport}/state.json は正規stateではありません。"
-            " 処理していません。Excelは変更していません。"
-        )
-    return state
+def _skip_before(date: str, *, kind: str) -> str:
+    return skip_before_start_message({"start_date": DEFAULT_START_DATE}, date, kind=kind)
 
 
 def run_predict_today(
@@ -204,17 +185,15 @@ def run_predict_today(
     force: bool = False,
     run_predict_fn,
 ) -> str:
-    """「今日の中央競馬と地方競馬と競艇を予想して」用。"""
+    """「今日の中央競馬と地方競馬と競艇を予想して」用。正規stateは使わない。"""
     date = target_date or today_str()
-    require_production_states(base_dir)
     lines = [_header("今日の予想（中央競馬＋地方競馬＋競艇）", date)]
 
     for sport in SPORTS:
         label = SPORT_LABELS[sport]
         lines.append(f"\n---\n\n## {label}\n")
-        state = load_canonical_state(base_dir, sport)
-        if is_before_start_date(state, date):
-            lines.append(skip_before_start_message(state, date, kind="predict"))
+        if is_before_learning_start(date):
+            lines.append(_skip_before(date, kind="predict"))
             continue
         races, status = ensure_race_data(base_dir, sport, date)
         lines.append(status)
@@ -223,8 +202,19 @@ def run_predict_today(
                 lines.append(f"\n{label}は開催なしとして正常終了します。")
             else:
                 lines.append(f"\n{label}予想はこの競技だけ中止します。")
+            lines.append(
+                "\n"
+                + run_predict_fn(
+                    sport, date, force=force, sync_drive=False, sync_inbox=False
+                )
+            )
             continue
-        lines.append("\n" + run_predict_fn(sport, date, force=force, sync_drive=False))
+        lines.append(
+            "\n"
+            + run_predict_fn(
+                sport, date, force=force, sync_drive=False, sync_inbox=False
+            )
+        )
 
     lines.append(_excel_list(base_dir))
     _append_drive_sync(base_dir, lines)
@@ -243,42 +233,22 @@ def run_results_yesterday(
     find_day_records_fn=None,
     load_state_fn=None,
 ) -> str:
-    """「昨日の結果を確認して」用。3競技を別々に反映。"""
+    """「昨日の結果を確認して」用。予想の正本は前日の predictions.json。"""
     date = target_date or yesterday_str()
-    require_production_states(base_dir)
     lines = [_header("昨日の結果確認（中央競馬＋地方競馬＋競艇）", date)]
 
     for sport in SPORTS:
         label = SPORT_LABELS[sport]
         lines.append(f"\n## {label}\n")
-        state = _ready_state(base_dir, sport, load_state_fn)
-        if is_before_start_date(state, date):
-            lines.append(skip_before_start_message(state, date, kind="results"))
+        if is_before_learning_start(date):
+            lines.append(_skip_before(date, kind="results"))
             continue
-        day_records = find_day_records_fn(state, date)
-        if not day_records:
-            lines.append(f"{date} の{label}予想記録がありません。")
+        if run_results_fn is None:
+            lines.append(f"{label}の結果処理関数がありません。")
             continue
-
-        results, status = ensure_result_data(base_dir, sport, date, day_records)
-        lines.append(status)
-
-        result_path = result_data_path(base_dir, sport, date)
-        if results and apply_results_fn is not None and is_official_result_file(result_path):
-            lines.append(apply_results_fn(sport, date, result_path, sync_drive=False))
-        elif run_results_fn is not None:
-            lines.append(run_results_fn(sport, date, force=force, sync_drive=False))
-
-        still_pending = [
-            r
-            for r in find_day_records_fn(_ready_state(base_dir, sport, load_state_fn), date)
-            if not r.get("skipped") and r.get("tickets") and not (r.get("result") or {}).get("trifecta")
-        ]
-        if run_learning_fn is not None and not still_pending:
-            lines.append(f"\n### {label} 学習レポート（他競技と混ぜない）\n")
-            lines.append(run_learning_fn(sport))
-        elif still_pending:
-            lines.append(f"\n{label}は未取得があるため、この日付を処理済みにも学習確定にもしません。")
+        lines.append(
+            run_results_fn(sport, date, force=force, sync_drive=False, sync_inbox=False)
+        )
 
     lines.append(_excel_list(base_dir))
     _append_drive_sync(base_dir, lines)

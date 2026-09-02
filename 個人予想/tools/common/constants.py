@@ -50,6 +50,19 @@ STATE_VERSION = 2
 STATE_TIMEZONE = "Asia/Tokyo"
 # 予想・結果・集計・復習・学習の開始日（JST）。これより前は対象外。
 DEFAULT_START_DATE = "2026-09-03"
+DAILY_JSON_SCHEMA_VERSION = 1
+LEARNING_JSON_UNSAVED = "学習JSON未保存"
+COMPLETED_RESULT_STATUSES = frozenset({"的中", "ハズレ"})
+DAY_STATUS_PREDICTED = "predicted"
+DAY_STATUS_NO_MEETING = "no_meeting"
+DAY_STATUS_FETCH_FAILED = "fetch_failed"
+INBOX_ROOT_NAME = "予想学習"
+INBOX_DIR_NAME = "inbox"
+INBOX_SPORT_FOLDERS = {
+    "jra": "中央競馬",
+    "nar": "地方競馬",
+    "kyotei": "競艇",
+}
 SPORT_LABELS = {
     "jra": "中央競馬",
     "nar": "地方競馬",

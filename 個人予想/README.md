@@ -37,14 +37,16 @@ PCがオフでも動きます。時刻は日本時間です。
 
 | 日本時間 | 内容 |
 |----------|------|
-| 毎日 4:00 | 前日の正式結果、Excel集計、復習、学習 |
-| 毎日 6:00 | 当日の公式出走、最大5レースずつ予想、Excel記入 |
+| 毎日 4:00 | 前日の予想JSONを正本に正式結果、Excel集計、結果JSON保存 |
+| 毎日 6:00 | 当日の公式出走、最大5レースずつ予想、Excel記入、予想JSON保存 |
 
 定期実行は GitHub Actions Variable `PERSONAL_PREDICT_ENABLED=true` のときだけ動きます。
 
 手動の `verify-drive` と初期移行は、スイッチがオフでも使えます。4:00 / 6:00 は `true` のときだけ動きます。
 
-初期移行は **PC版 Cursor** から一度だけ行います。GitHub Actions の checkout には Windows ローカルの state が無いため、Actions 側の bootstrap は state なしでは失敗終了します。Driveの古いExcelは取得しません。
+日次の正本は Drive inbox の日次JSONです。正規stateは日次ジョブから更新しません。学習JSONの保存失敗では Excel 成功を取り消さず、「学習JSON未保存」と報告します。
+
+初期移行は **PC版 Cursor** から一度だけ行います。Driveの古いExcelは取得しません。
 
 最初の設定は `個人予想/DRIVE_SYNC.md` を見てください。秘密鍵は GitHub Secret にだけ置きます。
 
@@ -54,14 +56,15 @@ PCがオフでも動きます。時刻は日本時間です。
 python3 個人予想/tools/workflow.py init-state --start-date 2026-09-03 --i-confirm-init-state
 python3 個人予想/tools/workflow.py predict-today
 python3 個人予想/tools/workflow.py results-yesterday
+python3 個人予想/tools/workflow.py ingest-inbox --date YYYY-MM-DD
 python3 個人予想/tools/workflow.py verify-drive
 python3 個人予想/tools/workflow.py cloud-predict
 python3 個人予想/tools/workflow.py cloud-results
 ```
 
-`init-state` は確認フラグがあるときだけ、中央競馬・地方競馬・競艇の正規stateを新規作成します。開始日は 2026-09-03（JST）です。3つとも成功するか、この実行で作ったstateを1つも残さないかのどちらかです。既存stateは上書きしません。Excel は変更しません。
+`init-state` は確認フラグがあるときだけ、中央競馬・地方競馬・競艇の正規stateを新規作成します。開始日は 2026-09-03（JST）です。3つとも成功するか、この実行で作ったstateを1つも残さないかのどちらかです。既存stateは上書きしません。Excel は変更しません。日次の予想・結果には必須ではありません。
 
-クラウドの予想・結果は、Drive取得直後に3競技の正規stateを確認します。無い・不正・開始日不一致なら、出走取得やExcel・Driveへの書き込みはしません。
+クラウドの予想・結果は Excel と日次JSON（inbox）を使います。正規stateが無くても止まりません。`jra_state.json` 等は日次ジョブから更新しません。`ingest-inbox` は後から Cursor が正規stateへ合成するときだけ使います。
 
 `predict-all` は中央競馬・地方競馬・競艇の3種類です。
 
@@ -69,9 +72,9 @@ python3 個人予想/tools/workflow.py cloud-results
 
 | 区分 | 出走 | 結果 | 保存先 |
 |------|------|------|--------|
-| 中央競馬 | race.netkeiba.com（開催日のみ。非開催は正常終了） | race.netkeiba.com / db.netkeiba.com の三連単。`race_id` が無い記録は取得失敗 | `data/races/jra` / `data/results/jra` / `data/jra` |
-| 地方競馬 | nar.netkeiba.com（取れなければこの競技だけ中止） | nar.netkeiba.com の三連単。取れなければ取得失敗 | `data/races/nar` / `data/results/nar` / `data/nar` |
-| 競艇 | boatrace.jp（取れなければこの競技だけ中止） | boatrace.jp の `raceresult`。取れなければ取得失敗 | `data/races/kyotei` / `data/results/kyotei` / `data/kyotei` |
+| 中央競馬 | race.netkeiba.com（開催日のみ。非開催は正常終了） | race.netkeiba.com / db.netkeiba.com の三連単。`race_id` が無い記録は取得失敗 | `data/races/jra` / `data/results/jra` / `data/inbox/jra` |
+| 地方競馬 | nar.netkeiba.com（取れなければこの競技だけ中止） | nar.netkeiba.com の三連単。取れなければ取得失敗 | `data/races/nar` / `data/results/nar` / `data/inbox/nar` |
+| 競艇 | boatrace.jp（取れなければこの競技だけ中止） | boatrace.jp の `raceresult`。取れなければ取得失敗 | `data/races/kyotei` / `data/results/kyotei` / `data/inbox/kyotei` |
 
 本番では examples / sample / test_fixture を使いません。推測では記入しません。
 

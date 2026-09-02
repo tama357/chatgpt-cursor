@@ -282,6 +282,7 @@ class InitStateTest(ProductionDataGuardMixin, unittest.TestCase):
         self.assertIn("Excelは変更していません", results)
         self.assertEqual(snapshot_tree(sandbox / "excel"), excel_before)
         self.assertEqual(_file_hash(sandbox / "data" / "jra" / "state.json"), state_before)
+        self.assertFalse((sandbox / "data" / "inbox").exists())
 
     def test_sept2_learning_excluded_sept3_included(self):
         sandbox = make_sandbox(ROOT, copy_excel=False)
@@ -322,6 +323,17 @@ class InitStateTest(ProductionDataGuardMixin, unittest.TestCase):
             "jra", START, ROOT / "examples" / "jra_results.sample.json", sync_drive=False
         )
         self.assertIn("結果報告", applied)
+        from common.daily_json import load_predictions_doc, load_results_doc, records_from_predictions_doc
+
+        pred_doc = load_predictions_doc(sandbox, "jra", START)
+        result_doc = load_results_doc(sandbox, "jra", START)
+        selected = records_from_predictions_doc(pred_doc)
+        self.assertGreaterEqual(len(selected), 1)
+        self.assertTrue(result_doc and result_doc.get("races"))
+        state_before_ingest = load_json(sandbox / "data" / "jra" / "state.json")
+        self.assertEqual(state_before_ingest.get("records"), [])
+        ingest = workflow.ingest_inbox("jra", START)
+        self.assertIn("正規stateへ合成", ingest)
         learn = workflow.run_learning_report("jra")
         self.assertIn("100レースまでの残り", learn)
         state = load_json(sandbox / "data" / "jra" / "state.json")
@@ -448,49 +460,38 @@ class InitStateTest(ProductionDataGuardMixin, unittest.TestCase):
             mock_sync.assert_not_called()
             mock_push.assert_not_called()
 
-    def test_cloud_jobs_stop_before_fetch_when_drive_has_no_state(self):
+    def test_cloud_jobs_run_without_state_and_do_not_push_canonical_state(self):
         _prepare_excel_config(self.tmp)
-        mock_today = Mock(side_effect=AssertionError("予想してはいけない"))
-        mock_predict = Mock(side_effect=AssertionError("予想してはいけない"))
-        mock_results = Mock(side_effect=AssertionError("結果処理してはいけない"))
+        mock_today = Mock(return_value="予想OK")
+        mock_results = Mock(return_value="結果OK")
         with (
             patch.object(cloud_runner, "pull_excel_files", return_value=_OkReport()),
-            patch.object(cloud_runner, "pull_learning_data", return_value=_OkReport()),
-            patch.object(cloud_runner, "sync_excel_files") as mock_sync,
-            patch.object(cloud_runner, "push_learning_data") as mock_push,
-            patch.object(state_mod, "save_json", side_effect=AssertionError("stateを書いてはいけない")),
-            patch(
-                "orchestrator.ensure_race_data",
-                side_effect=AssertionError("出走取得してはいけない"),
-            ),
-            patch(
-                "orchestrator.ensure_result_data",
-                side_effect=AssertionError("結果取得してはいけない"),
+            patch.object(cloud_runner, "_push_excel", return_value="excel ok"),
+            patch.object(cloud_runner, "_push_inbox", return_value="inbox ok"),
+            patch.object(cloud_runner, "pull_predictions_for_date", return_value=_OkReport()),
+            patch.object(cloud_runner, "push_learning_data") as mock_push_state,
+            patch.object(
+                state_mod, "save_json", side_effect=AssertionError("stateを書いてはいけない")
             ),
         ):
-            with self.assertRaises(CloudJobError) as pred_ctx:
-                run_cloud_predict(
-                    self.tmp,
-                    target_date=START,
-                    force=True,
-                    run_predict_today_fn=mock_today,
-                    run_predict_fn=mock_predict,
-                )
-            with self.assertRaises(CloudJobError) as res_ctx:
-                run_cloud_results(
-                    self.tmp,
-                    target_date=START,
-                    force=True,
-                    run_results_yesterday_fn=mock_results,
-                )
-        for message in (str(pred_ctx.exception), str(res_ctx.exception)):
-            self.assertIn("正規stateが揃っていない", message)
-            self.assertIn("Drive保存は行っていません", message)
-        mock_today.assert_not_called()
-        mock_predict.assert_not_called()
-        mock_results.assert_not_called()
-        mock_sync.assert_not_called()
-        mock_push.assert_not_called()
+            pred = run_cloud_predict(
+                self.tmp,
+                target_date=START,
+                force=True,
+                run_predict_today_fn=mock_today,
+                run_predict_fn=mock_today,
+            )
+            res = run_cloud_results(
+                self.tmp,
+                target_date=START,
+                force=True,
+                run_results_yesterday_fn=mock_results,
+            )
+        self.assertIn("予想OK", pred)
+        self.assertIn("結果OK", res)
+        mock_today.assert_called()
+        mock_results.assert_called_once()
+        mock_push_state.assert_not_called()
         self.assertEqual(_count_states(self.tmp), 0)
 
     def test_cloud_jobs_reject_invalid_wrong_and_mismatched_states(self):
@@ -531,24 +532,25 @@ class InitStateTest(ProductionDataGuardMixin, unittest.TestCase):
                     json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
                 )
 
-            mock_today = Mock(side_effect=AssertionError("予想してはいけない"))
+            mock_today = Mock(return_value="予想OK")
             with (
                 patch.object(cloud_runner, "pull_excel_files", return_value=_OkReport()),
-                patch.object(cloud_runner, "pull_learning_data", return_value=_OkReport()),
+                patch.object(cloud_runner, "_push_excel", return_value="excel ok"),
+                patch.object(cloud_runner, "_push_inbox", return_value="inbox ok"),
                 patch.object(cloud_runner, "sync_excel_files") as mock_sync,
                 patch.object(cloud_runner, "push_learning_data") as mock_push,
             ):
-                with self.assertRaises(CloudJobError):
-                    run_cloud_predict(
-                        self.tmp,
-                        target_date=START,
-                        force=True,
-                        run_predict_today_fn=mock_today,
-                        run_predict_fn=mock_today,
-                    )
+                pred = run_cloud_predict(
+                    self.tmp,
+                    target_date=START,
+                    force=True,
+                    run_predict_today_fn=mock_today,
+                    run_predict_fn=mock_today,
+                )
                 with self.assertRaises(CloudJobError):
                     run_bootstrap_cloud(self.tmp, confirm=True)
-            mock_today.assert_not_called()
+            self.assertIn("予想OK", pred)
+            mock_today.assert_called()
             mock_sync.assert_not_called()
             mock_push.assert_not_called()
 
@@ -597,50 +599,28 @@ class InitStateTest(ProductionDataGuardMixin, unittest.TestCase):
         sandbox = make_sandbox(ROOT, copy_excel=True)
         self.addCleanup(shutil.rmtree, sandbox, True)
         workflow.ROOT = sandbox
-        dummy = load_json(sandbox / "data" / "jra" / "state.json")
+        dummy_path = sandbox / "data" / "jra" / "state.json"
+        dummy_path.parent.mkdir(parents=True, exist_ok=True)
+        dummy_path.write_text(
+            json.dumps({"version": 2, "sport": "jra", "source": "sample"}, ensure_ascii=False),
+            encoding="utf-8",
+        )
+        dummy = load_json(dummy_path)
         self.assertFalse(is_canonical_state(dummy, "jra"))
         with self.assertRaises(ValidationError):
             load_canonical_state(sandbox, "jra")
-        excel_before = snapshot_tree(sandbox / "excel")
-        with (
-            patch.object(
-                workflow.fetch_jra,
-                "fetch_races_outcome",
-                side_effect=AssertionError("出走取得してはいけない"),
-            ),
-            patch.object(
-                workflow,
-                "ensure_result_data",
-                side_effect=AssertionError("結果取得してはいけない"),
-            ),
-            patch.object(
-                workflow,
-                "ensure_workbooks",
-                side_effect=AssertionError("Excelを書いてはいけない"),
-            ),
-            patch.object(
-                state_mod,
-                "save_json",
-                side_effect=AssertionError("stateを書いてはいけない"),
-            ),
-        ):
-            with self.assertRaises(ValidationError) as pred:
-                workflow.run_predict("jra", START, force=True, sync_drive=False)
-            with self.assertRaises(ValidationError) as results:
-                workflow.run_results("jra", START, force=True, sync_drive=False)
-            with self.assertRaises(ValidationError) as applied:
-                workflow.apply_results_from_file(
-                    "jra",
-                    START,
-                    ROOT / "examples" / "jra_results.sample.json",
-                    sync_drive=False,
-                )
-            with self.assertRaises(ValidationError) as learning:
-                workflow.run_learning_report("jra")
-        for ctx in (pred, results, applied, learning):
-            self.assertIn("ありません", str(ctx.exception))
-        self.assertEqual(snapshot_tree(sandbox / "excel"), excel_before)
-        self.assertEqual(_count_states(sandbox), 0)
+        dummy_hash = _file_hash(dummy_path)
+        report = workflow.run_predict(
+            "jra", START, force=True, sync_drive=False, allow_sample=True, try_auto=False
+        )
+        self.assertIn("中央競馬", report)
+        self.assertEqual(_file_hash(dummy_path), dummy_hash)
+        missing = workflow.run_results("jra", BEFORE, force=True, sync_drive=False)
+        self.assertIn("対象外", missing)
+        with self.assertRaises(ValidationError) as learning:
+            workflow.run_learning_report("jra")
+        self.assertIn("ありません", str(learning.exception))
+        self.assertIn("sample", dummy_path.read_text(encoding="utf-8"))
 
     def test_load_canonical_state_requires_official_start_and_timezone(self):
         write_canonical_states(self.tmp, start_date="2026-09-01")
@@ -666,7 +646,6 @@ class InitStateTest(ProductionDataGuardMixin, unittest.TestCase):
             ("one-missing", START),
             ("mismatch", START),
         )
-        commands = ("predict-today", "results-yesterday", "report-all")
         for case, start_date in cases:
             shutil.rmtree(sandbox / "data", ignore_errors=True)
             (sandbox / "data").mkdir()
@@ -723,11 +702,42 @@ class InitStateTest(ProductionDataGuardMixin, unittest.TestCase):
                     side_effect=AssertionError("Driveへ書いてはいけない"),
                 ),
             ):
-                for command in commands:
-                    code = workflow.main([command, "--date", START, "--force"])
-                    self.assertEqual(code, 1, f"{case} {command}")
+                code = workflow.main(["report-all", "--date", START, "--force"])
+                self.assertEqual(code, 1, case)
             self.assertEqual(snapshot_tree(sandbox / "excel"), excel_before)
             self.assertEqual(snapshot_tree(sandbox / "data"), data_before)
+
+    def test_predict_today_runs_without_canonical_state(self):
+        sandbox = make_sandbox(ROOT, copy_excel=True)
+        self.addCleanup(shutil.rmtree, sandbox, True)
+        workflow.ROOT = sandbox
+        with (
+            patch.object(
+                workflow.fetch_jra,
+                "auto_outcome",
+                return_value={"races": [], "status": "no_meeting"},
+            ),
+            patch.object(
+                workflow.fetch_nar,
+                "auto_outcome",
+                return_value={"races": [], "status": "fetch_failed", "error": "fail"},
+            ),
+            patch.object(
+                workflow.fetch_kyotei,
+                "auto_outcome",
+                return_value={"races": [], "status": "fetch_failed", "error": "fail"},
+            ),
+            patch(
+                "excel.drive_sync.sync_excel_files",
+                side_effect=AssertionError("Driveへ書いてはいけない"),
+            ),
+        ):
+            code = workflow.main(["predict-today", "--date", START, "--force"])
+        self.assertEqual(code, 0)
+        self.assertEqual(_count_states(sandbox), 0)
+        self.assertTrue(
+            (sandbox / "data" / "inbox" / "jra" / f"{START}.predictions.json").exists()
+        )
 
     def test_workflow_yml_keeps_schedule_off_without_switch(self):
         text = (

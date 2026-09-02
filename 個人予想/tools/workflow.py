@@ -20,11 +20,36 @@ sys.path.insert(0, str(ROOT / "tools"))
 
 from common.aggregation import build_analysis  # noqa: E402
 from common.constants import (  # noqa: E402
+    DAY_STATUS_FETCH_FAILED,
+    DAY_STATUS_NO_MEETING,
     DEFAULT_START_DATE,
+    LEARNING_JSON_UNSAVED,
     RULE_FILES,
     SPORT_EXCEL_KEYS,
     SPORT_LABELS,
     SPORTS,
+)
+from common.daily_json import (  # noqa: E402
+    apply_results_doc_to_records,
+    build_predictions_payload,
+    build_results_payload,
+    count_completed_from_inbox,
+    empty_day_payload,
+    has_predicted_races,
+    is_before_learning_start,
+    load_daily_json,
+    load_predictions_doc,
+    load_results_doc,
+    make_race_id,
+    merge_result_races,
+    prediction_reread_problems,
+    predictions_path,
+    records_from_predictions_doc,
+    remaining_to_100,
+    results_cover_predictions,
+    results_path,
+    results_reread_problems,
+    save_daily_json,
 )
 from common.learning import build_learning_report  # noqa: E402
 from common.reporting import (  # noqa: E402
@@ -37,12 +62,9 @@ from common.review import analyze_review  # noqa: E402
 from common.state import (  # noqa: E402
     find_day_records,
     init_personal_states,
-    is_before_start_date,
-    is_processed,
     load_canonical_state,
     load_json,
     require_production_states,
-    mark_processed,
     records_since_start,
     save_json,
     skip_before_start_message,
@@ -50,13 +72,13 @@ from common.state import (  # noqa: E402
     validate_prediction_record,
     validate_result_record,
 )
+from excel.drive_inbox import upsert_inbox_file  # noqa: E402
 from common.tickets import ValidationError, check_hit, count_tickets  # noqa: E402
 from excel.io import write_predictions, write_results, write_summary  # noqa: E402
 from excel.templates import ensure_workbooks, init_excel  # noqa: E402
 from excel.drive_sync import DriveAuthError, sync_excel_files  # noqa: E402
 from cloud_runner import (  # noqa: E402
     CloudJobError,
-    record_fetch_failure,
     run_bootstrap_cloud,
     run_cloud_predict,
     run_cloud_results,
@@ -71,6 +93,7 @@ from fetch.race_builder import (  # noqa: E402
     load_races_from_file,
     result_data_path,
     save_races_json,
+    save_results_json,
 )
 from orchestrator import (  # noqa: E402
     _result_key,
@@ -95,34 +118,112 @@ def state_path(sport: str) -> Path:
     return ROOT / "data" / sport / "state.json"
 
 
+def _skip_before(date: str, *, kind: str) -> str:
+    return skip_before_start_message(
+        {"start_date": DEFAULT_START_DATE}, date, kind=kind
+    )
+
+
+def _learning_json_notes(
+    *,
+    sport: str,
+    path: Path,
+    payload: dict[str, Any],
+    problems: list[str],
+    sync_inbox: bool,
+    kind: str,
+) -> str:
+    lines: list[str] = []
+    if problems:
+        lines.append(f"{LEARNING_JSON_UNSAVED}（ローカル再読失敗: {'; '.join(problems)}）")
+        return "\n".join(lines)
+    lines.append(f"学習JSON保存: {path.name}")
+    if not sync_inbox:
+        return "\n".join(lines)
+
+    def _check(loaded: dict[str, Any]) -> list[str]:
+        if kind == "predictions":
+            return prediction_reread_problems(loaded, payload)
+        return results_reread_problems(loaded, payload)
+
+    item = upsert_inbox_file(ROOT, sport, path, reread_check=_check)
+    if item.status != "success":
+        lines.append(f"{LEARNING_JSON_UNSAVED}（{item.message}）")
+    else:
+        lines.append(f"Drive inbox更新: {path.name}")
+    return "\n".join(lines)
+
+
+def _write_predictions_json(
+    sport: str,
+    payload: dict[str, Any],
+    *,
+    sync_inbox: bool,
+) -> str:
+    try:
+        path = save_daily_json(predictions_path(ROOT, sport, payload["date"]), payload)
+        loaded = load_daily_json(path)
+        problems = prediction_reread_problems(loaded, payload)
+        return _learning_json_notes(
+            sport=sport,
+            path=path,
+            payload=payload,
+            problems=problems,
+            sync_inbox=sync_inbox,
+            kind="predictions",
+        )
+    except Exception as exc:  # noqa: BLE001 - 学習JSON失敗でExcel成功を取り消さない
+        return f"{LEARNING_JSON_UNSAVED}（{exc}）"
+
+
+def _write_results_json(
+    sport: str,
+    payload: dict[str, Any],
+    *,
+    sync_inbox: bool,
+) -> str:
+    try:
+        path = save_daily_json(results_path(ROOT, sport, payload["date"]), payload)
+        loaded = load_daily_json(path)
+        problems = results_reread_problems(loaded, payload)
+        return _learning_json_notes(
+            sport=sport,
+            path=path,
+            payload=payload,
+            problems=problems,
+            sync_inbox=sync_inbox,
+            kind="results",
+        )
+    except Exception as exc:  # noqa: BLE001 - 学習JSON失敗でExcel成功を取り消さない
+        return f"{LEARNING_JSON_UNSAVED}（{exc}）"
+
+
 def run_predict(
     sport: str,
     target_date: str,
     *,
     force: bool = False,
     sync_drive: bool = True,
+    sync_inbox: bool | None = None,
     allow_sample: bool = False,
     try_auto: bool = True,
 ) -> str:
     if sport not in CONFIG_FILES:
         return UNSUPPORTED.format(sport=sport)
+    if sync_inbox is None:
+        sync_inbox = sync_drive
     rules = load_rules(sport)
-    state = load_canonical_state(ROOT, sport)
-    if is_before_start_date(state, target_date):
-        return skip_before_start_message(state, target_date, kind="predict")
-    state["sport"] = rules["sport"]
-    key = f"predict:{target_date}"
-    payload = {"date": target_date, "sport": sport}
+    if is_before_learning_start(target_date):
+        return _skip_before(target_date, kind="predict")
     label = SPORT_LABELS[sport]
-
-    if not force and is_processed(state, key, payload):
-        existing = find_day_records(state, target_date)
-        if existing:
-            return (
-                f"⚠ 二重登録防止: {target_date} の{label}予想は処理済みです。"
-                f"再実行する場合は --force を付けてください。"
-                f"\n\n既存 {len(existing)} レース"
-            )
+    existing = load_predictions_doc(ROOT, sport, target_date)
+    if not force and has_predicted_races(existing):
+        races = records_from_predictions_doc(existing)
+        return (
+            f"⚠ 二重登録防止: {target_date} の{label}予想は処理済みです。"
+            f"再実行する場合は --force を付けてください。"
+            f"\n\n既存 {len(races)} レース"
+        )
 
     ensure_workbooks(ROOT)
     excel = ensure_workbooks(ROOT)
@@ -142,22 +243,35 @@ def run_predict(
 
     if not races:
         if status_code == "fetch_failed":
-            record_fetch_failure(state, date=target_date, reason=fetch_error or "取得失敗")
-            save_json(state_path(sport), state)
+            payload = empty_day_payload(
+                date=target_date, sport=sport, day_status=DAY_STATUS_FETCH_FAILED
+            )
+            json_note = _write_predictions_json(sport, payload, sync_inbox=sync_inbox)
             return (
-                f"【取得失敗】{label}の出走情報を取得できませんでした。サンプルデータは使いません。"
+                f"【取得失敗】{label}の出走情報を取得できませんでした。"
+                f"{' ' + str(fetch_error) if fetch_error else ''}"
+                " サンプルデータは使いません。"
                 " この競技の予想は中止します。"
+                f"\n\n{json_note}"
             )
         if sport == "jra" or status_code == "no_meeting":
+            payload = empty_day_payload(
+                date=target_date, sport=sport, day_status=DAY_STATUS_NO_MEETING
+            )
+            json_note = _write_predictions_json(sport, payload, sync_inbox=sync_inbox)
             return (
                 f"【開催なし】{target_date} は{label}の開催日ではありません。"
                 + (" 中央競馬は開催日のみ予想します。" if sport == "jra" else "")
+                + f"\n\n{json_note}"
             )
-        record_fetch_failure(state, date=target_date, reason="取得失敗")
-        save_json(state_path(sport), state)
+        payload = empty_day_payload(
+            date=target_date, sport=sport, day_status=DAY_STATUS_FETCH_FAILED
+        )
+        json_note = _write_predictions_json(sport, payload, sync_inbox=sync_inbox)
         return (
             f"【取得失敗】{label}の出走情報を取得できませんでした。サンプルデータは使いません。"
             " この競技の予想は中止します。"
+            f"\n\n{json_note}"
         )
 
     selected, skipped = select_races(races, rules)
@@ -166,28 +280,18 @@ def run_predict(
         pred = build_prediction(candidate, rules, idx)
         pred["date"] = target_date
         pred["sport"] = rules["sport"]
+        pred["race_id"] = make_race_id(pred)
         validate_prediction_record(pred, rules)
-        upsert_record(state, pred)
         predictions.append(pred)
 
-    for skip in skipped:
-        if skip.get("skip_reason") and skip.get("venue"):
-            upsert_record(
-                state,
-                {
-                    "date": target_date,
-                    "sport": rules["sport"],
-                    "venue": skip.get("venue"),
-                    "race": skip.get("race"),
-                    "skipped": True,
-                    "skip_reason": skip.get("skip_reason"),
-                    "prediction_score": skip.get("prediction_score"),
-                },
-            )
-
     sheet_status = write_predictions(entry, target_date, predictions)
-    mark_processed(state, key, payload)
-    save_json(state_path(sport), state)
+    payload = build_predictions_payload(
+        date=target_date,
+        sport=sport,
+        races=predictions,
+        skipped=skipped,
+    )
+    json_note = _write_predictions_json(sport, payload, sync_inbox=sync_inbox)
 
     report = format_prediction_report(
         sport_label=label,
@@ -208,30 +312,37 @@ def run_predict(
         report += "\n\n⚠ 目安点数未満: " + ", ".join(
             f"{p['venue']}{p['race']}R({p['ticket_count']}点)" for p in under
         )
-    report += "\n\n※ 予想しやすさスコア(prediction_score)はExcel列がないため、解説文とstate.jsonに保存します。"
+    report += "\n\n※ 予想しやすさスコア(prediction_score)はExcel列がないため、解説文と学習JSONに保存します。"
+    report += f"\n\n{json_note}"
     if sync_drive:
         report += "\n\n" + sync_drive_cmd(keys=SPORT_EXCEL_KEYS[sport])
     return report
 
 
-def run_results(sport: str, target_date: str, *, force: bool = False, sync_drive: bool = True) -> str:
+def run_results(
+    sport: str,
+    target_date: str,
+    *,
+    force: bool = False,
+    sync_drive: bool = True,
+    sync_inbox: bool | None = None,
+) -> str:
     if sport not in CONFIG_FILES:
         return UNSUPPORTED.format(sport=sport)
-    rules = load_rules(sport)
-    state = load_canonical_state(ROOT, sport)
-    if is_before_start_date(state, target_date):
-        return skip_before_start_message(state, target_date, kind="results")
-    key = f"results:{target_date}"
-    payload = {"date": target_date, "sport": sport}
+    if sync_inbox is None:
+        sync_inbox = sync_drive
+    if is_before_learning_start(target_date):
+        return _skip_before(target_date, kind="results")
     label = SPORT_LABELS[sport]
-
-    day_records = [
-        r
-        for r in find_day_records(state, target_date)
-        if not r.get("skipped") and r.get("tickets")
-    ]
+    pred_doc = load_predictions_doc(ROOT, sport, target_date)
+    day_records = records_from_predictions_doc(pred_doc) if pred_doc else []
     if not day_records:
         return f"{target_date} の{label}予想記録がありません。先に予想を実行してください。"
+
+    existing_results = load_results_doc(ROOT, sport, target_date)
+    apply_results_doc_to_records(day_records, existing_results)
+    if not force and results_cover_predictions(pred_doc, existing_results):
+        return f"⚠ 二重登録防止: {target_date} の{label}結果処理は済みです。--force で再実行可。"
 
     pending = [r for r in day_records if not (r.get("result") or {}).get("trifecta")]
     if pending:
@@ -241,20 +352,12 @@ def run_results(sport: str, target_date: str, *, force: bool = False, sync_drive
             load_official_results(official_path) if is_official_result_file(official_path) else []
         )
         if rows:
-            _apply_result_rows(state, target_date, rows)
-            save_json(state_path(sport), state)
-            day_records = [
-                r
-                for r in find_day_records(state, target_date)
-                if not r.get("skipped") and r.get("tickets")
-            ]
+            _apply_result_rows_to_records(day_records, rows)
             pending = [r for r in day_records if not (r.get("result") or {}).get("trifecta")]
 
     pending_note = ""
     if pending and not any((r.get("result") or {}).get("trifecta") for r in day_records):
         names = ", ".join(f"{r['venue']}{r['race']}R" for r in pending)
-        record_fetch_failure(state, date=target_date, reason=f"正式結果なし: {names}")
-        save_json(state_path(sport), state)
         return (
             f"【取得失敗】{label}の正式結果を取得できませんでした: {names}\n"
             "推測では記入しません。この競技の結果処理は中止します。"
@@ -263,14 +366,10 @@ def run_results(sport: str, target_date: str, *, force: bool = False, sync_drive
 
     if pending:
         names = ", ".join(f"{r['venue']}{r['race']}R" for r in pending)
-        record_fetch_failure(state, date=target_date, reason=f"一部未取得: {names}")
         pending_note = (
             f"\n\n【取得失敗・一部】未確定: {names}。"
             " 処理済みにはしません。次回は未取得レースだけ再取得します。"
         )
-
-    if not pending and not force and is_processed(state, key, payload):
-        return f"⚠ 二重登録防止: {target_date} の{label}結果処理は済みです。--force で再実行可。"
 
     ensure_workbooks(ROOT)
     excel = ensure_workbooks(ROOT)
@@ -288,22 +387,8 @@ def run_results(sport: str, target_date: str, *, force: bool = False, sync_drive
             if result["status"] == "ハズレ" and not result.get("primary_miss_reason"):
                 result["primary_miss_reason"] = review.get("primary_miss_reason")
                 result["secondary_miss_reasons"] = review.get("secondary_miss_reasons", [])
-                result["close_miss"] = review.get("close_miss", False)
-            record["learning"] = {
-                "sport": sport,
-                "fetched_data": record.get("fetched_data"),
-                "prediction_score": record.get("prediction_score"),
-                "confidence": record.get("confidence"),
-                "axis": record.get("axis"),
-                "tickets": record.get("tickets"),
-                "ticket_count": record.get("ticket_count"),
-                "odds_band_median": record.get("odds_band_median"),
-                "result": result,
-                "review": review,
-                "prediction_logic_version": record.get("prediction_logic_version"),
-            }
-            validate_result_record(record)
-            upsert_record(state, record)
+            result["close_miss"] = review.get("close_miss", False)
+        validate_result_record(record)
         result_items.append(record)
 
     sheet1 = write_results(
@@ -312,31 +397,76 @@ def run_results(sport: str, target_date: str, *, force: bool = False, sync_drive
         [{"number": r["number"], "result": r["result"], "ticket_count": r["ticket_count"]} for r in result_items],
     )
     sheet2 = write_summary(summary, target_date, result_items)
-    if pending:
-        save_json(state_path(sport), state)
-    else:
-        mark_processed(state, key, payload)
-        save_json(state_path(sport), state)
+    merged_races = merge_result_races(
+        (existing_results or {}).get("races") or [],
+        [item for item in build_results_payload(date=target_date, sport=sport, races=result_items)["races"]],
+    )
+    payload = {
+        "schema_version": build_results_payload(date=target_date, sport=sport, races=[])["schema_version"],
+        "date": target_date,
+        "sport": sport,
+        "timezone": build_results_payload(date=target_date, sport=sport, races=[])["timezone"],
+        "races": merged_races,
+    }
+    json_note = _write_results_json(sport, payload, sync_inbox=sync_inbox)
+    completed_n = count_completed_from_inbox(ROOT, sport)
+    json_note += (
+        f"\n100R母数（{label}・確定レースのみ）: {completed_n}"
+        f" / 残り {remaining_to_100(completed_n)}"
+    )
 
+    all_records = _inbox_completed_records(sport)
     base_report = format_result_report(
         sport_label=label,
         date=target_date,
         records=result_items,
-        all_records=records_since_start(state, with_result=True),
+        all_records=all_records,
         sheet_status=f"{sheet1}\n{sheet2}",
     )
     if pending:
         base_report += pending_note
+    base_report += f"\n\n{json_note}"
     if sync_drive:
         return base_report + "\n\n" + sync_drive_cmd(keys=SPORT_EXCEL_KEYS[sport])
     return base_report
 
 
-def _apply_result_rows(state: dict[str, Any], target_date: str, results: list[dict[str, Any]]) -> None:
-    by_race = {_result_key(r): r for r in results}
-    for record in find_day_records(state, target_date):
-        if record.get("skipped"):
+def _inbox_completed_records(sport: str) -> list[dict[str, Any]]:
+    folder = ROOT / "data" / "inbox" / sport
+    if not folder.exists():
+        return []
+    out: list[dict[str, Any]] = []
+    for path in sorted(folder.glob("*.results.json")):
+        try:
+            doc = load_daily_json(path)
+        except (OSError, ValidationError, json.JSONDecodeError):
             continue
+        date = doc.get("date")
+        for race in doc.get("races") or []:
+            if not isinstance(race, dict):
+                continue
+            record = {
+                "date": date,
+                "sport": sport,
+                "venue": race.get("venue"),
+                "race": race.get("race"),
+                "ticket_count": race.get("points") or 0,
+                "prediction_score": 0,
+                "result": {
+                    "status": race.get("status"),
+                    "stake": race.get("stake") or 0,
+                    "payout": race.get("payout") or 0,
+                },
+            }
+            out.append(record)
+    return out
+
+
+def _apply_result_rows_to_records(
+    records: list[dict[str, Any]], results: list[dict[str, Any]]
+) -> None:
+    by_race = {_result_key(r): r for r in results}
+    for record in records:
         if (record.get("result") or {}).get("trifecta"):
             continue
         key = _result_key(record)
@@ -359,21 +489,61 @@ def _apply_result_rows(state: dict[str, Any], target_date: str, results: list[di
             "secondary_miss_reasons": [] if hit else raw.get("secondary_miss_reasons", []),
             "scenario_realized": raw.get("scenario_realized"),
         }
-        upsert_record(state, record)
 
 
 def apply_results_from_file(
-    sport: str, target_date: str, results_file: Path, *, sync_drive: bool = True
+    sport: str,
+    target_date: str,
+    results_file: Path,
+    *,
+    sync_drive: bool = True,
+    sync_inbox: bool | None = None,
 ) -> str:
-    """結果JSONをstateへ反映してから run_results を実行。"""
-    state = load_canonical_state(ROOT, sport)
-    if is_before_start_date(state, target_date):
-        return skip_before_start_message(state, target_date, kind="results")
+    """公式結果JSONを取り込み、Excelと日次results.jsonへ反映する。正規stateは変更しない。"""
+    if sport not in CONFIG_FILES:
+        return UNSUPPORTED.format(sport=sport)
+    if is_before_learning_start(target_date):
+        return _skip_before(target_date, kind="results")
     with results_file.open(encoding="utf-8") as handle:
         data = json.load(handle)
-    _apply_result_rows(state, target_date, data.get("results", []))
+    save_results_json(
+        ROOT, sport, target_date, list(data.get("results") or []), source="manual_file"
+    )
+    return run_results(
+        sport, target_date, force=True, sync_drive=sync_drive, sync_inbox=sync_inbox
+    )
+
+
+def ingest_inbox(sport: str, target_date: str) -> str:
+    """Cursor用。日次JSONを正規stateへ合成する。日次ジョブからは呼ばない。"""
+    if sport not in CONFIG_FILES:
+        return UNSUPPORTED.format(sport=sport)
+    if is_before_learning_start(target_date):
+        return _skip_before(target_date, kind="results")
+    state = load_canonical_state(ROOT, sport)
+    pred_doc = load_predictions_doc(ROOT, sport, target_date)
+    records = records_from_predictions_doc(pred_doc) if pred_doc else []
+    if not records:
+        return f"{target_date} の{SPORT_LABELS[sport]}予想JSONがありません。"
+    apply_results_doc_to_records(records, load_results_doc(ROOT, sport, target_date))
+    for record in records:
+        if record.get("result") and not record.get("review"):
+            review = analyze_review(record, record["result"].get("trifecta"))
+            record["review"] = review
+            result = record["result"]
+            if result.get("status") == "ハズレ" and not result.get("primary_miss_reason"):
+                result["primary_miss_reason"] = review.get("primary_miss_reason")
+                result["secondary_miss_reasons"] = review.get("secondary_miss_reasons", [])
+            result["close_miss"] = review.get("close_miss", False)
+        if record.get("result"):
+            validate_result_record(record)
+        upsert_record(state, record)
     save_json(state_path(sport), state)
-    return run_results(sport, target_date, sync_drive=sync_drive)
+    done = sum(1 for r in records if (r.get("result") or {}).get("status") in {"的中", "ハズレ"})
+    return (
+        f"{SPORT_LABELS[sport]} {target_date}: 正規stateへ合成しました。"
+        f" 予想{len(records)} / 確定{done}"
+    )
 
 
 def run_learning_report(sport: str) -> str:
@@ -454,6 +624,7 @@ def build_parser() -> argparse.ArgumentParser:
         "verify-drive",
         "cloud-predict",
         "cloud-results",
+        "ingest-inbox",
     ):
         sub.add_parser(name, parents=[common])
 
@@ -581,6 +752,10 @@ def main(argv: list[str] | None = None) -> int:
             print(apply_results_from_file(args.sport, target_date, args.results_file))
         elif args.command == "save-races":
             print(save_races_cmd(args.sport, target_date, args.races_file))
+        elif args.command == "ingest-inbox":
+            print(
+                "\n\n".join(ingest_inbox(sport, target_date) for sport in SPORTS)
+            )
         return 0
     except CloudJobError as exc:
         print(str(exc))

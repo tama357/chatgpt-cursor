@@ -210,7 +210,7 @@ class CloudActionsTest(ProductionDataGuardMixin, unittest.TestCase):
         self.assertEqual(code, 1)
 
     def test_push_raises_on_drive_save_failure(self):
-        from cloud_runner import CloudJobError, _push
+        from cloud_runner import CloudJobError, _push_excel
 
         class FailReport:
             failed = 1
@@ -221,12 +221,59 @@ class CloudActionsTest(ProductionDataGuardMixin, unittest.TestCase):
 
         import cloud_runner
 
-        with (
-            patch.object(cloud_runner, "sync_excel_files", return_value=FailReport()),
-            patch.object(cloud_runner, "push_learning_data", return_value=FailReport()),
-        ):
+        with patch.object(cloud_runner, "sync_excel_files", return_value=FailReport()):
             with self.assertRaises(CloudJobError):
-                _push(ROOT)
+                _push_excel(ROOT)
+
+    def test_inbox_push_failure_does_not_fail_cloud_job(self):
+        from cloud_runner import LEARNING_JSON_UNSAVED, run_cloud_predict
+        from excel.drive_sync import DriveSyncReport, FileSyncResult
+        from pathlib import Path
+        import tempfile
+        import shutil
+
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp, True)
+
+        class OkReport:
+            failed = 0
+            succeeded = 6
+
+            def format_report(self):
+                return "excel ok"
+
+        fail = DriveSyncReport()
+        fail.attempted = 1
+        fail.failed = 1
+        fail.results.append(
+            FileSyncResult(
+                key="jra:x",
+                local_name="2026-09-03.predictions.json",
+                local_path=tmp / "x.json",
+                drive_file_id=None,
+                status="failed",
+                message="mock fail",
+            )
+        )
+
+        import cloud_runner
+
+        with (
+            patch.object(cloud_runner, "pull_excel_files", return_value=OkReport()),
+            patch.object(cloud_runner, "_push_excel", return_value="excel ok"),
+            patch.object(cloud_runner, "push_inbox_for_date", return_value=fail),
+            patch.object(cloud_runner, "push_learning_data") as mock_state,
+        ):
+            text = run_cloud_predict(
+                tmp,
+                target_date="2026-09-03",
+                force=True,
+                run_predict_today_fn=lambda *a, **k: "予想OK",
+                run_predict_fn=lambda *a, **k: "予想OK",
+            )
+        self.assertIn("予想OK", text)
+        self.assertIn(LEARNING_JSON_UNSAVED, text)
+        mock_state.assert_not_called()
 
     def test_bootstrap_refuses_without_confirm_and_never_pulls(self):
         from cloud_runner import CloudJobError, run_bootstrap_cloud

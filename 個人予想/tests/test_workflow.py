@@ -59,6 +59,31 @@ class PersonalWorkflowTest(ProductionDataGuardMixin, unittest.TestCase):
         kwargs.setdefault("try_auto", False)
         return workflow.run_predict(sport, TEST_DATE, **kwargs)
 
+    def _pred_doc(self, sport: str):
+        from common.daily_json import load_predictions_doc, prediction_reread_problems
+
+        doc = load_predictions_doc(workflow.ROOT, sport, TEST_DATE)
+        self.assertIsNotNone(doc)
+        self.assertEqual(prediction_reread_problems(doc, doc), [])
+        return doc
+
+    def _pred_races(self, sport: str):
+        from common.daily_json import records_from_predictions_doc
+
+        return records_from_predictions_doc(self._pred_doc(sport))
+
+    def _result_doc(self, sport: str):
+        from common.daily_json import load_results_doc, results_reread_problems
+
+        doc = load_results_doc(workflow.ROOT, sport, TEST_DATE)
+        self.assertIsNotNone(doc)
+        self.assertEqual(results_reread_problems(doc, doc), [])
+        return doc
+
+    def _assert_state_records_empty(self, sport: str):
+        state = workflow.load_json(workflow.state_path(sport))
+        self.assertEqual(state.get("records"), [])
+
     def test_expand_pick(self):
         self.assertEqual(
             tickets.expand_pick("4-2-135"),
@@ -90,32 +115,45 @@ class PersonalWorkflowTest(ProductionDataGuardMixin, unittest.TestCase):
         report = self._predict("jra")
         self.assertIn("中央競馬", report)
         self.assertIn("中山", report)
-        state = workflow.load_json(workflow.state_path("jra"))
-        selected = [r for r in state["records"] if r["date"] == TEST_DATE and r.get("tickets")]
+        self.assertIn("学習JSON保存", report)
+        doc = self._pred_doc("jra")
+        self.assertEqual(doc["date"], TEST_DATE)
+        self.assertEqual(doc["sport"], "jra")
+        selected = self._pred_races("jra")
         self.assertGreaterEqual(len(selected), 1)
         self.assertLessEqual(len(selected), 5)
         self.assertTrue(all(r.get("sport") == "jra" for r in selected))
+        for race in selected:
+            self.assertTrue(race.get("race_id"))
+            self.assertIn("prediction_score", race)
+            self.assertIn("confidence", race)
+            self.assertTrue(race.get("tickets"))
+            self.assertGreaterEqual(race.get("ticket_count") or 0, 1)
+            self.assertTrue(race.get("axis") or (race.get("tickets") or [{}])[0].get("pick"))
+        self._assert_state_records_empty("jra")
 
     def test_predict_nar_max_five(self):
         """テストデータ使用: 地方競馬は最大5レース。"""
         report = self._predict("nar")
         self.assertIn("地方競馬", report)
         self.assertIn("大井", report)
-        state = workflow.load_json(workflow.state_path("nar"))
-        selected = [r for r in state["records"] if r["date"] == TEST_DATE and r.get("tickets")]
+        self.assertIn("学習JSON保存", report)
+        selected = self._pred_races("nar")
         self.assertEqual(len(selected), 5)
         self.assertTrue(all(r.get("sport") == "nar" for r in selected))
         venues = {r["venue"] for r in selected}
         self.assertNotIn("中山", venues)
+        self._assert_state_records_empty("nar")
 
     def test_predict_kyotei_from_sample(self):
         """テストデータ使用: 競艇の通しを確認する。"""
         report = self._predict("kyotei")
         self.assertIn("競艇", report)
-        state = workflow.load_json(workflow.state_path("kyotei"))
-        selected = [r for r in state["records"] if r["date"] == TEST_DATE and r.get("tickets")]
+        self.assertIn("学習JSON保存", report)
+        selected = self._pred_races("kyotei")
         self.assertGreaterEqual(len(selected), 1)
         self.assertLessEqual(len(selected), 5)
+        self._assert_state_records_empty("kyotei")
 
     def test_predict_keiba_and_keirin_not_used(self):
         self.assertIn("未対応", workflow.run_predict("keiba", TEST_DATE, force=True, sync_drive=False))
@@ -130,13 +168,15 @@ class PersonalWorkflowTest(ProductionDataGuardMixin, unittest.TestCase):
         workflow.apply_results_from_file(
             "nar", TEST_DATE, ROOT / "examples" / "nar_results.sample.json", sync_drive=False
         )
-        jra_state = workflow.load_json(workflow.state_path("jra"))
-        nar_state = workflow.load_json(workflow.state_path("nar"))
-        jra_venues = {r.get("venue") for r in jra_state["records"] if r.get("tickets")}
-        nar_venues = {r.get("venue") for r in nar_state["records"] if r.get("tickets")}
+        jra_venues = {r.get("venue") for r in self._pred_races("jra")}
+        nar_venues = {r.get("venue") for r in self._pred_races("nar")}
         self.assertTrue(jra_venues)
         self.assertTrue(nar_venues)
         self.assertFalse(jra_venues & nar_venues)
+        self._assert_state_records_empty("jra")
+        self._assert_state_records_empty("nar")
+        workflow.ingest_inbox("jra", TEST_DATE)
+        workflow.ingest_inbox("nar", TEST_DATE)
         jra_learn = workflow.run_learning_report("jra")
         nar_learn = workflow.run_learning_report("nar")
         self.assertIn("100レースまでの残り", jra_learn)
@@ -159,21 +199,27 @@ class PersonalWorkflowTest(ProductionDataGuardMixin, unittest.TestCase):
             "jra", TEST_DATE, ROOT / "examples" / "jra_results.sample.json", sync_drive=False
         )
         self.assertIn("結果報告", report)
-        state = workflow.load_json(workflow.state_path("jra"))
-        completed = [r for r in state["records"] if r.get("review")]
-        self.assertGreater(len(completed), 0)
+        self.assertIn("学習JSON保存", report)
+        races = self._result_doc("jra")["races"]
+        self.assertGreater(len(races), 0)
+        for race in races:
+            self.assertTrue(race.get("race_id"))
+            self.assertIn(race.get("status"), {"的中", "ハズレ"})
+            self.assertIn("stake", race)
+            self.assertIn("payout", race)
+            self.assertTrue(race.get("trifecta"))
+            if race.get("status") == "ハズレ":
+                self.assertTrue(race.get("primary_miss_reason"))
+        self._assert_state_records_empty("jra")
 
     def test_partial_results_are_not_marked_processed(self):
+        from common.daily_json import results_cover_predictions
+        from fetch.race_builder import save_results_json
+
         self._predict("nar")
-        state = workflow.load_json(workflow.state_path("nar"))
-        selected = [
-            r
-            for r in state["records"]
-            if r.get("date") == TEST_DATE and r.get("tickets")
-        ]
+        selected = self._pred_races("nar")
         self.assertGreaterEqual(len(selected), 2)
         first, rest = selected[0], selected[1:]
-        from fetch.race_builder import save_results_json
 
         save_results_json(
             workflow.ROOT,
@@ -192,17 +238,13 @@ class PersonalWorkflowTest(ProductionDataGuardMixin, unittest.TestCase):
         with patch("orchestrator.fetch_keiba_results", return_value=[]):
             report = workflow.run_results("nar", TEST_DATE, force=True, sync_drive=False)
         self.assertIn("処理済みにはしません", report)
-        state = workflow.load_json(workflow.state_path("nar"))
-        self.assertFalse(
-            workflow.is_processed(
-                state, f"results:{TEST_DATE}", {"date": TEST_DATE, "sport": "nar"}
-            )
-        )
-        with_result = [
-            r for r in state["records"] if r.get("date") == TEST_DATE and r.get("result")
-        ]
+        pred_doc = self._pred_doc("nar")
+        result_doc = self._result_doc("nar")
+        self.assertFalse(results_cover_predictions(pred_doc, result_doc))
+        with_result = result_doc["races"]
         self.assertEqual(len(with_result), 1)
         self.assertEqual(with_result[0]["venue"], first["venue"])
+        self._assert_state_records_empty("nar")
 
         remaining_payload = [
             {
@@ -216,21 +258,41 @@ class PersonalWorkflowTest(ProductionDataGuardMixin, unittest.TestCase):
         with patch("orchestrator.fetch_keiba_results", return_value=remaining_payload):
             second = workflow.run_results("nar", TEST_DATE, force=True, sync_drive=False)
         self.assertNotIn("処理済みにはしません", second)
-        state = workflow.load_json(workflow.state_path("nar"))
-        self.assertTrue(
-            workflow.is_processed(
-                state, f"results:{TEST_DATE}", {"date": TEST_DATE, "sport": "nar"}
-            )
-        )
+        result_doc = self._result_doc("nar")
+        self.assertTrue(results_cover_predictions(self._pred_doc("nar"), result_doc))
         again = workflow.run_results("nar", TEST_DATE, force=False, sync_drive=False)
         self.assertIn("二重登録防止", again)
-        # 取得済みは上書きしない
         first_after = next(
             r
-            for r in state["records"]
+            for r in result_doc["races"]
             if r.get("venue") == first["venue"] and r.get("race") == first["race"]
         )
-        self.assertEqual(first_after["result"]["trifecta"], "1-2-3")
+        self.assertEqual(first_after["trifecta"], "1-2-3")
+
+    def test_same_name_predictions_json_is_updated_not_duplicated(self):
+        self._predict("jra")
+        self._predict("jra", force=True)
+        folder = workflow.ROOT / "data" / "inbox" / "jra"
+        files = list(folder.glob("*.predictions.json"))
+        self.assertEqual(len(files), 1)
+        self.assertEqual(files[0].name, f"{TEST_DATE}.predictions.json")
+
+    def test_learning_json_failure_does_not_undo_excel(self):
+        from common.constants import EXCEL_FILENAMES
+        from openpyxl import load_workbook
+
+        excel_path = workflow.ROOT / "excel" / EXCEL_FILENAMES["jra_entry"]
+        before = excel_path.read_bytes()
+        with patch.object(
+            workflow, "save_daily_json", side_effect=OSError("disk full")
+        ):
+            report = self._predict("jra")
+        self.assertIn("学習JSON未保存", report)
+        self.assertIn("中山", report)
+        self.assertNotEqual(excel_path.read_bytes(), before)
+        inbox = workflow.ROOT / "data" / "inbox" / "jra" / f"{TEST_DATE}.predictions.json"
+        self.assertFalse(inbox.exists())
+        self._assert_state_records_empty("jra")
 
 
 if __name__ == "__main__":
