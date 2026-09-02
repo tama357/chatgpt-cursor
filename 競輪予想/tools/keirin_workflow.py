@@ -941,6 +941,7 @@ def pull_state(
     state_path = Path(state_path)
     resolved_id = drive_state.require_state_file_id(file_id)
     client = store if store is not None else drive_state.default_drive_store()
+    drive_state.verify_state_file_metadata(client, resolved_id)
     raw = client.download(resolved_id)
     data = drive_state.parse_remote_state_bytes(raw)
     validate_state(data)
@@ -957,9 +958,14 @@ def push_state(
     state_path = Path(state_path)
     resolved_id = drive_state.require_state_file_id(file_id)
     client = store if store is not None else drive_state.default_drive_store()
-    data = load_state_for_update(state_path)
-    validate_state(data)
-    client.upload_replace(resolved_id, drive_state.encode_state_bytes(data))
+    drive_state.verify_state_file_metadata(client, resolved_id)
+    local_data = load_state_for_update(state_path)
+    validate_state(local_data)
+    remote_raw = client.download(resolved_id)
+    remote_data = drive_state.parse_remote_state_bytes(remote_raw)
+    validate_state(remote_data)
+    drive_state.guard_against_destructive_overwrite(local_data, remote_data)
+    client.upload_replace(resolved_id, drive_state.encode_state_bytes(local_data))
     return {"path": str(state_path), "file_id_env": drive_state.FILE_ID_ENV}
 
 

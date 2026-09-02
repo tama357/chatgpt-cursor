@@ -1,0 +1,6 @@
+# 競輪予想/ で使う外部依存だけを明示する。
+# tools/keirin_workflow.py と tools/keirin_drive_state.py は標準ライブラリのみで動くが、
+# Drive state永続化（keirin_drive_state.py の service account 認証）だけ PyJWT を使う。
+# PyJWT の RS256 署名には cryptography が必要（個人予想/requirements.txt と同じ組み合わせ）。
+PyJWT>=2.8.0
+cryptography>=41.0.0

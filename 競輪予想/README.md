@@ -41,7 +41,8 @@ Cursor側に実行コードが保存されていなかったため、ChatGPTか�
 - `examples/day_predictions.example.json`：6:00のstate保存用入力例（スコア・候補付き、架空データ）
 - `examples/results.example.json`：結果入力例（架空データ）
 - `tools/keirin_workflow.py`：買い目検証、内部stateのupsert、Drive往復、本文生成、Chatwork送信
-- `tools/keirin_drive_state.py`：既存DriveファイルIDの取得と上書き（新規作成しない）
+- `tools/keirin_drive_state.py`：既存DriveファイルIDの取得と上書き（新規作成しない）。ファイル名・MIMEタイプ・内容の事前検証、空上書き防止を含む
+- `requirements.txt`：Drive state機能に必要な外部依存（PyJWT、cryptography）
 - `tests/test_keirin_workflow.py`：点数計算・形式・的中判定・Chatwork回帰のテスト
 - `tests/test_keirin_state_upsert.py`：state保存の単体テスト（一時ディレクトリのみ）
 - `tests/test_keirin_state_drive.py`：6:00と4:00を別実行環境としてDrive経由でつなぐテスト
@@ -53,9 +54,17 @@ Cursor側に実行コードが保存されていなかったため、ChatGPTか�
 
 6:00は Drive pull → `record-predictions` → 同じDriveファイルIDへの上書きが成功してからSheets記入とChatwork送信へ進む。4:00は Drive pull → `record-results` → 同じDriveファイルIDへの上書きが成功してからSheets結果更新へ進む。`axis` は本線先頭から自動抽出し、`close_miss` は結果追記時に自動判定する。レポートは初期配点を変更せず、`recommended_weights` として提案だけを出す。
 
-実データの `state/*.json` はGit管理対象外であり、Google SheetsとChatworkにも出力しない。ChatGPT Workの定期実行ではローカルstateが残らないため、既存のGoogle Drive JSON（`KEIRIN_STATE_DRIVE_FILE_ID`）を上書きして引き継ぐ。認証は `GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON`。ファイルIDと秘密情報はGitへ書かない。既存の鉄板／中穴／大穴、自信度、シート列、Chatwork本文は変更しない。
+実データの `state/*.json` はGit管理対象外であり、Google SheetsとChatworkにも出力しない。ChatGPT Workの定期実行ではローカルstateが残らないため、既存のGoogle Drive JSON（`KEIRIN_STATE_DRIVE_FILE_ID`、想定ファイル名 `keirin_learning_state.json`）を上書きして引き継ぐ。認証は `GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON`。ファイルIDと秘密情報はGitへ書かない。既存の鉄板／中穴／大穴、自信度、シート列、Chatwork本文は変更しない。
+
+Drive取得・保存の直前には、ファイル名（`keirin_learning_state.json`）・MIMEタイプ（`application/json`/`text/plain`）・内容（`version:1`と配列の`days`）を必ず検証し、1つでも合わなければ中断する。ローカルstateが空のときに既存Drive stateを空で上書きすることも防ぐ。誤って別ファイルIDを設定した場合の事故防止策。
 
 ## ローカル検証
+
+Drive state機能を使う場合は依存関係を先に入れる。
+
+```bash
+pip install -r 競輪予想/requirements.txt
+```
 
 ```bash
 python3 競輪予想/tools/keirin_workflow.py validate-predictions 競輪予想/examples/predictions.example.json

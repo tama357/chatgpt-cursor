@@ -133,6 +133,7 @@
 
 ## 作業ログ
 
+- 2026-09-02：競輪予想のDrive state永続化に誤ファイル上書き防止策を追加。GET/PATCH前にファイル名（`keirin_learning_state.json`）とMIMEタイプを検証し、空ローカルstateでの上書きも中止する安全策を実装。`競輪予想/requirements.txt`（PyJWT、cryptography）を新設。既存59件（新規10件含む）全テスト成功、Chatwork本文は無変更（`競輪予想/tools/keirin_drive_state.py`, `競輪予想/tools/keirin_workflow.py`）
 - 2026-09-02：個人予想（中央・地方・競艇）予想記入シートに「軸」「予想しやすさ」「外れ型」列の自動記録（第1段階）を実装。既存A〜N列・配点・閾値・買い目生成は無変更。単体11件＋E2E＋既存88件全テスト成功（`個人予想/tools/excel/`, `個人予想/tools/common/constants.py`）
 - 2026-08-31：ケニア砂ダム台本の金額断定を外し、提出用に最終調整（`副業用/台本/`）
 - 2026-08-31：日本称賛系YouTube台本（ケニア砂ダム／2chスレ形式）提出用完成稿を作成（`副業用/台本/`）
