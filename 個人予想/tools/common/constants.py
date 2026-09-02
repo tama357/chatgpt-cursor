@@ -24,6 +24,26 @@ ALLOWED_TARGETS = frozenset({"鉄板", "中穴", "大穴"})
 ALLOWED_CONFIDENCE = frozenset({"A", "B", "C"})
 ALLOWED_TICKET_TYPES = frozenset({"本線", "抑え"})
 
+# Excel「外れ型」列の表示用。state.jsonのprimary_miss_reasonは14種すべて1対1で保持し、
+# 情報を圧縮しない（secondary_miss_reasonsは今回Excelへは出力しない）。
+MISS_TYPE_MAP = {
+    "axis_miss": "軸外れ",
+    "second_place_miss": "2着外れ",
+    "third_place_miss": "3着外れ",
+    "scenario_miss": "展開読み外れ",
+    "line_collapse": "ライン崩壊",
+    "unexpected_position": "想定外位置取り",
+    "upset": "波乱",
+    "condition_miss": "条件読み外れ",
+    "accident": "事故",
+    "data_shortage": "データ不足",
+    "overconfidence": "過信",
+    "too_many_combinations": "買い目過多",
+    "too_few_combinations": "買い目不足",
+    "other": "その他",
+}
+MISS_TYPE_NONE = "-"
+
 # 個人予想の正式3区分。keiba（統合）と keirin は未使用。
 SPORTS = ("jra", "nar", "kyotei")
 STATE_VERSION = 2

@@ -6,6 +6,7 @@ from typing import Any
 
 from openpyxl import load_workbook
 
+from common.constants import MISS_TYPE_MAP, MISS_TYPE_NONE
 from common.tickets import expand_tickets
 from excel.mapping import (
     load_entry_mapping,
@@ -30,6 +31,15 @@ def _format_explanation(pred: dict[str, Any]) -> str:
     if risks:
         parts.append(f"リスク:{risks}")
     return " / ".join(p for p in parts if p)
+
+
+def _miss_type_label(result: dict[str, Any]) -> str:
+    """外れ型（表示用）。state.jsonのprimary_miss_reasonを1対1で日本語化するだけで、
+    secondary_miss_reasonsを含む詳細情報はstate.json側にそのまま残す。"""
+    if result.get("status") != "ハズレ":
+        return MISS_TYPE_NONE
+    reason = result.get("primary_miss_reason")
+    return MISS_TYPE_MAP.get(reason, MISS_TYPE_NONE)
 
 
 def write_predictions(
@@ -66,6 +76,8 @@ def write_predictions(
             "main": " ".join(main_picks),
             "cover": " ".join(cover_picks),
             "explanation": _format_explanation(pred),
+            "axis": pred.get("axis"),
+            "prediction_score": pred.get("prediction_score"),
         }
         if "total_points" in cols:
             writes["total_points"] = total
@@ -108,6 +120,8 @@ def write_results(
             safe_write(ws, row, cols["status"], result.get("status"))
         if "total_points" in cols:
             safe_write(ws, row, cols["total_points"], item.get("ticket_count"))
+        if "miss_type" in cols:
+            safe_write(ws, row, cols["miss_type"], _miss_type_label(result))
 
     wb.save(entry_path)
     wb.close()
