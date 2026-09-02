@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""競輪予想の形式検証、内部stateのupsert、Chatwork本文生成、明示確認付き送信。"""
+"""競輪予想の検証・記録・Chatwork。Cursorは予想せず、ChatGPT最終予想だけを転記する。"""
 
 from __future__ import annotations
 
@@ -97,6 +97,15 @@ def expand_pick(compact: str) -> tuple[str, ...]:
     if first in candidates or second in candidates:
         raise ValidationError(f"同じ選手が複数着に含まれています: {compact}")
     return tuple(f"{first}-{second}-{third}" for third in candidates)
+
+
+def check_hit(trifecta: str, tickets: list[dict[str, Any]]) -> bool:
+    combinations: set[str] = set()
+    for ticket in tickets:
+        pick = ticket.get("pick")
+        if isinstance(pick, str):
+            combinations.update(expand_pick(pick))
+    return trifecta in combinations
 
 
 def extract_axis(tickets: list[dict[str, Any]]) -> str:
@@ -469,32 +478,7 @@ def validate_state(data: dict[str, Any], rules: dict[str, Any] | None = None) ->
             _validate_scored_item(candidate, weights, penalty_codes)
             candidate_by_key[key] = candidate
 
-        ranked = sorted(
-            candidates,
-            key=lambda item: (
-                -item["prediction_score"],
-                -item["score_breakdown"]["axis_reliability"],
-                -item["score_breakdown"]["scenario_simplicity"],
-                -item["score_breakdown"]["recent_form"],
-                item["venue"],
-                item["race"],
-            ),
-        )
-        top_three = ranked[:RACE_COUNT]
-        top_keys = {_race_key(item) for item in top_three}
-        expected_low_quality = top_three[-1]["prediction_score"] < threshold
-        if day.get("low_quality_day") is not expected_low_quality:
-            raise ValidationError(
-                f"内部state: low_quality_dayは3位スコア{top_three[-1]['prediction_score']}に対して{expected_low_quality}です"
-            )
-        for rank, candidate in enumerate(top_three, start=1):
-            if candidate.get("selected") is not True or candidate.get("selection_rank") != rank:
-                raise ValidationError("内部state: 上位3候補のselected/selection_rankが不正です")
-        for candidate in ranked[RACE_COUNT:]:
-            if candidate.get("selected") is not False or candidate.get("selection_rank") is not None:
-                raise ValidationError("内部state: 4位以下の候補をselectedにできません")
-
-        prediction_keys: set[tuple[str, int]] = set()
+        prediction_keys: dict[tuple[str, int], int] = {}
         numbers: set[int] = set()
         for prediction in predictions:
             if not isinstance(prediction, dict):
@@ -504,9 +488,29 @@ def validate_state(data: dict[str, Any], rules: dict[str, Any] | None = None) ->
                 raise ValidationError("内部state: prediction.numberは重複なしの1〜3が必要です")
             numbers.add(number)
             key = _race_key(prediction)
-            if key not in top_keys or key in prediction_keys:
-                raise ValidationError("内部state: predictionsはcandidates上位3レースと一致が必要です")
-            prediction_keys.add(key)
+            if key not in candidate_by_key or key in prediction_keys:
+                raise ValidationError("内部state: predictionsはcandidates内のレースである必要があります")
+            prediction_keys[key] = number
+
+        selected_scores = [candidate_by_key[key]["prediction_score"] for key in prediction_keys]
+        expected_low_quality = min(selected_scores) < threshold
+        if day.get("low_quality_day") is not expected_low_quality:
+            raise ValidationError(
+                f"内部state: low_quality_dayは選定3Rの最低スコア{min(selected_scores)}に対して{expected_low_quality}です"
+            )
+        for candidate in candidates:
+            key = _race_key(candidate)
+            if key in prediction_keys:
+                expected_selected, expected_rank = True, prediction_keys[key]
+            else:
+                expected_selected, expected_rank = False, None
+            if candidate.get("selected") is not expected_selected or candidate.get("selection_rank") != expected_rank:
+                raise ValidationError(
+                    "内部state: selected/selection_rankはChatGPTが選んだ3レースと一致が必要です"
+                )
+
+        for prediction in predictions:
+            key = _race_key(prediction)
             _validate_scored_item(prediction, weights, penalty_codes)
             candidate = candidate_by_key[key]
             for field in ("prediction_score", "score_breakdown", "penalties"):
@@ -863,41 +867,33 @@ def build_day_from_predictions(
             item["selection_rank"] = raw["selection_rank"]
         candidates.append(item)
 
-    ranked = sorted(
-        candidates,
-        key=lambda item: (
-            -item["prediction_score"],
-            -item["score_breakdown"]["axis_reliability"],
-            -item["score_breakdown"]["scenario_simplicity"],
-            -item["score_breakdown"]["recent_form"],
-            item["venue"],
-            item["race"],
-        ),
-    )
-    top_three = ranked[:RACE_COUNT]
-    expected_low_quality = top_three[-1]["prediction_score"] < threshold
+    prediction_keys = {_race_key(raw): raw["number"] for raw in data["predictions"]}
+    selected_items = [item for item in candidates if _race_key(item) in prediction_keys]
+    if len(selected_items) != RACE_COUNT:
+        raise ValidationError("predictionsはcandidates内のレースである必要があります")
+    expected_low_quality = min(item["prediction_score"] for item in selected_items) < threshold
     if "low_quality_day" in data and data.get("low_quality_day") is not expected_low_quality:
         raise ValidationError(
-            f"low_quality_dayは3位スコア{top_three[-1]['prediction_score']}に対して{expected_low_quality}です"
+            f"low_quality_dayは選定3Rの最低スコア{min(item['prediction_score'] for item in selected_items)}に対して{expected_low_quality}です"
         )
-    for rank, candidate in enumerate(ranked, start=1):
-        if rank <= RACE_COUNT:
-            expected_selected, expected_rank = True, rank
+    for candidate in candidates:
+        key = _race_key(candidate)
+        if key in prediction_keys:
+            expected_selected, expected_rank = True, prediction_keys[key]
         else:
             expected_selected, expected_rank = False, None
         if "selected" in candidate and candidate["selected"] is not expected_selected:
-            raise ValidationError("上位3候補のselected/selection_rankが不正です")
+            raise ValidationError("selected/selection_rankはChatGPTが選んだ3レースと一致が必要です")
         if "selection_rank" in candidate and candidate.get("selection_rank") != expected_rank:
-            raise ValidationError("上位3候補のselected/selection_rankが不正です")
+            raise ValidationError("selected/selection_rankはChatGPTが選んだ3レースと一致が必要です")
         candidate["selected"] = expected_selected
         candidate["selection_rank"] = expected_rank
 
-    top_keys = {_race_key(item) for item in top_three}
     predictions: list[dict[str, Any]] = []
     for raw, tickets in zip(data["predictions"], expanded):
         key = _race_key(raw)
-        if key not in top_keys:
-            raise ValidationError("predictionsはcandidates上位3レースと一致が必要です")
+        if key not in prediction_keys:
+            raise ValidationError("predictionsはcandidates内のレースである必要があります")
         candidate = next(item for item in candidates if _race_key(item) == key)
         _validate_scored_item(raw, weights, penalty_codes)
         for field in ("prediction_score", "score_breakdown", "penalties"):
@@ -1145,6 +1141,40 @@ def build_parser() -> argparse.ArgumentParser:
             default=None,
             help="内部state.jsonの保存先。省略時は state/state.json",
         )
+    prepare = subparsers.add_parser(
+        "prepare-today",
+        help="当日データを集め、候補5〜10RをChatGPT入力JSONにする。予想しない",
+    )
+    prepare.add_argument("--date", help="対象日 YYYY-MM-DD（省略時は今日・JST）")
+    prepare.add_argument("--races-file", type=Path, help="ネット無し検証用のレースJSON")
+    ingest = subparsers.add_parser(
+        "ingest-final",
+        help="ChatGPT最終予想を取り込む。無ければ停止し、Cursorは予想しない",
+    )
+    ingest.add_argument("json_file", nargs="?", help="最終予想JSON。省略時は data/inbox/日付.final.json")
+    ingest.add_argument("--date", help="対象日 YYYY-MM-DD（省略時は今日・JST）")
+    ingest.add_argument("--skip-sheets", action="store_true", help="シート転記をせずJSONとガードだけ検証")
+    ingest.add_argument(
+        "--confirm-send",
+        action="store_true",
+        help="再読一致後にChatworkへ送る。無いときは送らない",
+    )
+    results_cmd = subparsers.add_parser(
+        "results-yesterday",
+        help="公式結果を取り、既存シートの結果欄・集計欄だけ更新し学習JSONへ保存",
+    )
+    results_cmd.add_argument("--date", help="対象日 YYYY-MM-DD（省略時は昨日・JST）")
+    results_cmd.add_argument("--results-file", type=Path, help="ネット無し検証用の結果JSON")
+    results_cmd.add_argument("--skip-sheets", action="store_true", help="シート更新をせず学習JSONだけ")
+    today = subparsers.add_parser(
+        "predict-today",
+        help="互換用。収集と候補抽出だけ行い、最終予想が無ければ停止する",
+    )
+    today.add_argument("--date", help="対象日 YYYY-MM-DD（省略時は今日・JST）")
+    today.add_argument("--races-file", type=Path, help="ネット無し検証用のレースJSON")
+    today.add_argument("json_file", nargs="?", help="あればChatGPT最終予想として取り込む")
+    today.add_argument("--skip-sheets", action="store_true")
+    today.add_argument("--confirm-send", action="store_true")
     return parser
 
 
@@ -1166,9 +1196,66 @@ def _resolve_state_path_for_record(args: argparse.Namespace) -> Path:
     )
 
 
+def _root() -> Path:
+    return Path(__file__).resolve().parents[1]
+
+
+def _run_cursor_command(args: argparse.Namespace) -> str:
+    import keirin_cursor_flow as flow
+    from keirin_jst import today_str, yesterday_str
+
+    root = _root()
+    if args.command == "prepare-today":
+        return flow.prepare_today(
+            root,
+            args.date,
+            races_file=getattr(args, "races_file", None),
+        )
+    if args.command == "ingest-final":
+        final_file = Path(args.json_file) if getattr(args, "json_file", None) else None
+        send_fn = None
+        if args.confirm_send:
+            def send_fn(data: dict[str, Any]) -> Any:
+                message = format_predictions(data)
+                token = os.environ.get("CHATWORK_API_TOKEN")
+                room_id = os.environ.get("CHATWORK_ROOM_ID")
+                if not token or not room_id:
+                    raise ValidationError("CHATWORK_API_TOKENとCHATWORK_ROOM_IDが必要です")
+                return send_chatwork(message, token, room_id)
+
+        return flow.ingest_final(
+            root,
+            args.date,
+            final_file=final_file,
+            write_sheets=not args.skip_sheets,
+            confirm_send=args.confirm_send,
+            send_fn=send_fn,
+        )
+    if args.command == "results-yesterday":
+        return flow.process_results(
+            root,
+            args.date or yesterday_str(),
+            results_file=getattr(args, "results_file", None),
+            write_sheets=not args.skip_sheets,
+        )
+    if args.command == "predict-today":
+        return flow.run_today_or_stop(
+            root,
+            args.date or today_str(),
+            races_file=getattr(args, "races_file", None),
+            final_file=Path(args.json_file) if getattr(args, "json_file", None) else None,
+            write_sheets=not getattr(args, "skip_sheets", False),
+            confirm_send=bool(getattr(args, "confirm_send", False)),
+        )
+    raise ValidationError(f"未対応のコマンドです: {args.command}")
+
+
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
+        if args.command in {"prepare-today", "ingest-final", "results-yesterday", "predict-today"}:
+            print(_run_cursor_command(args))
+            return 0
         if args.command == "pull-state":
             state_path = Path(args.state_path) if args.state_path else default_state_path()
             pull_state(state_path)
