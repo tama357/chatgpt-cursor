@@ -174,3 +174,5 @@
 - 2026-09-02：個人予想に 2026-09-03 JST 開始の正式 init-state を追加。9月2日以前は結果・学習対象外。提出用 `競輪予想/` は未変更
 - 2026-09-02：PR #9 レビュー修正。正規stateと開始日 2026-09-03 を処理前に必須化。init-state は全成功または全失敗。提出用 `競輪予想/` は未変更
 - 2026-09-02：PR #9 最終修正。load_canonical_state と predict-today / results-yesterday / report-all で開始日 2026-09-03 を一括必須化。提出用 `競輪予想/` は未変更
+- 2026-09-02：競輪予想に record-predictions / record-results を追加。axis・tickets・close_miss を内部stateへ機械的upsert。Chatwork本文・Sheets・forbidden_outputsは未変更
+- 2026-09-02：競輪予想の内部state.jsonを既存DriveファイルIDへ上書き永続化。6:00/4:00はDrive pull→upsert→同じIDへpush。失敗時はSheets/Chatworkに進まない

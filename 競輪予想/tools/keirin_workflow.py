@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
-"""競輪予想の形式検証、Chatwork本文生成、明示確認付き送信。"""
+"""競輪予想の形式検証、内部stateのupsert、Chatwork本文生成、明示確認付き送信。"""
 
 from __future__ import annotations
 
 import argparse
+import copy
 import json
 import math
 import os
 import re
+import shutil
 import sys
 import urllib.error
 import urllib.parse
@@ -15,7 +17,12 @@ import urllib.request
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
+
+_TOOLS_DIR = Path(__file__).resolve().parent
+if str(_TOOLS_DIR) not in sys.path:
+    sys.path.insert(0, str(_TOOLS_DIR))
+import keirin_drive_state as drive_state  # noqa: E402
 
 
 PICK_RE = re.compile(r"^([1-9])-([1-9])-([1-9]+)$")
@@ -90,6 +97,71 @@ def expand_pick(compact: str) -> tuple[str, ...]:
     if first in candidates or second in candidates:
         raise ValidationError(f"同じ選手が複数着に含まれています: {compact}")
     return tuple(f"{first}-{second}-{third}" for third in candidates)
+
+
+def extract_axis(tickets: list[dict[str, Any]]) -> str:
+    if not isinstance(tickets, list) or not tickets:
+        raise ValidationError("本線買い目からaxisを抽出できません")
+    firsts: set[str] = set()
+    for ticket in tickets:
+        if not isinstance(ticket, dict) or ticket.get("type") != "本線":
+            continue
+        compact = ticket.get("pick")
+        if not isinstance(compact, str):
+            raise ValidationError("本線買い目の形式が不正です")
+        match = PICK_RE.fullmatch(compact)
+        if not match:
+            raise ValidationError(f"買い目の形式が不正です: {compact}")
+        firsts.add(match.group(1))
+    if not firsts:
+        raise ValidationError("本線買い目が無いためaxisを抽出できません")
+    if len(firsts) > 1:
+        raise ValidationError("本線の1着番号が複数あるためaxisを特定できません")
+    return firsts.pop()
+
+
+def second_candidates(tickets: list[dict[str, Any]]) -> set[str]:
+    result: set[str] = set()
+    for ticket in tickets:
+        pick = ticket.get("pick")
+        if not isinstance(pick, str):
+            continue
+        parts = pick.split("-")
+        if len(parts) >= 2:
+            result.add(parts[1])
+    return result
+
+
+def third_candidates(tickets: list[dict[str, Any]]) -> set[str]:
+    result: set[str] = set()
+    for ticket in tickets:
+        pick = ticket.get("pick")
+        if not isinstance(pick, str):
+            continue
+        parts = pick.split("-")
+        if len(parts) >= 3:
+            result.update(parts[2])
+    return result
+
+
+def compute_close_miss(
+    *,
+    status: str,
+    axis: str,
+    tickets: list[dict[str, Any]],
+    trifecta: str,
+) -> bool:
+    if status != "ハズレ":
+        return False
+    if not isinstance(trifecta, str) or not TRIFECTA_RE.fullmatch(trifecta):
+        raise ValidationError("close_miss判定には正規の三連単が必要です")
+    if not isinstance(axis, str) or not axis:
+        raise ValidationError("close_miss判定にはaxisが必要です")
+    first, second, third = trifecta.split("-")
+    axis_ok = axis == first
+    second_ok = second in second_candidates(tickets)
+    third_ok = third in third_candidates(tickets)
+    return bool(axis_ok and (second_ok or third_ok))
 
 
 def validate_predictions(data: dict[str, Any]) -> list[list[ExpandedTicket]]:
@@ -318,6 +390,42 @@ def _validate_internal_result(result: dict[str, Any]) -> None:
             raise ValidationError("内部state: ハズレ時のpayoutは0です")
         if primary in secondary or any(reason not in MISS_REASONS for reason in secondary):
             raise ValidationError("内部state: secondary_miss_reasonsが不正です")
+    trifecta = result.get("trifecta")
+    if trifecta is not None:
+        if not isinstance(trifecta, str) or not TRIFECTA_RE.fullmatch(trifecta):
+            raise ValidationError("内部state: result.trifectaは1-2-3形式にしてください")
+        if len(set(trifecta.split("-"))) != 3:
+            raise ValidationError("内部state: result.trifectaの選手番号が重複しています")
+    close_miss = result.get("close_miss")
+    if close_miss is not None and not isinstance(close_miss, bool):
+        raise ValidationError("内部state: result.close_missはtrueまたはfalseです")
+
+
+def _validate_optional_learning_fields(prediction: dict[str, Any]) -> None:
+    tickets = prediction.get("tickets")
+    axis = prediction.get("axis")
+    if tickets is not None:
+        if not isinstance(tickets, list) or not tickets:
+            raise ValidationError("内部state: ticketsは空でない配列が必要です")
+        seen: set[str] = set()
+        total = 0
+        for ticket in tickets:
+            if not isinstance(ticket, dict) or ticket.get("type") not in ALLOWED_TICKET_TYPES:
+                raise ValidationError("内部state: ticketsのtypeが不正です")
+            compact = ticket.get("pick")
+            if not isinstance(compact, str):
+                raise ValidationError("内部state: ticketsのpickが不正です")
+            combinations = expand_pick(compact)
+            if seen.intersection(combinations):
+                raise ValidationError("内部state: ticketsの買い目が重複しています")
+            seen.update(combinations)
+            total += len(combinations)
+        if prediction.get("ticket_count") != total:
+            raise ValidationError("内部state: ticket_countとticketsの点数が一致しません")
+        if axis is not None and axis != extract_axis(tickets):
+            raise ValidationError("内部state: axisが本線先頭と一致しません")
+    if axis is not None and (not isinstance(axis, str) or not re.fullmatch(r"[1-9]", axis)):
+        raise ValidationError("内部state: axisは1〜9の文字列が必要です")
 
 
 def validate_state(data: dict[str, Any], rules: dict[str, Any] | None = None) -> list[dict[str, Any]]:
@@ -414,6 +522,7 @@ def validate_state(data: dict[str, Any], rules: dict[str, Any] | None = None) ->
             ticket_count = prediction.get("ticket_count")
             if not isinstance(ticket_count, int) or not 1 <= ticket_count <= MAX_COMBINATIONS:
                 raise ValidationError("内部state: ticket_countは1〜10が必要です")
+            _validate_optional_learning_fields(prediction)
             result = prediction.get("result")
             if result is not None:
                 if not isinstance(result, dict):
@@ -603,6 +712,379 @@ def send_chatwork(message: str, token: str, room_id: str) -> dict[str, Any]:
     return response
 
 
+PREDICTION_STATE_FIELDS = (
+    "number",
+    "venue",
+    "race",
+    "target",
+    "confidence",
+    "prediction_score",
+    "score_breakdown",
+    "penalties",
+    "first_place_candidate_count",
+)
+
+
+def default_state_path() -> Path:
+    return Path(__file__).resolve().parents[1] / "state" / "state.json"
+
+
+def load_state_for_update(path: Path) -> dict[str, Any]:
+    if not path.exists():
+        return {"version": 1, "days": []}
+    try:
+        with path.open(encoding="utf-8") as handle:
+            data = json.load(handle)
+    except json.JSONDecodeError as exc:
+        raise ValidationError(f"既存のstate.jsonが壊れているため上書きしません: {path}") from exc
+    except OSError as exc:
+        raise ValidationError(f"state.jsonを読めません: {path}") from exc
+    if not isinstance(data, dict) or data.get("version") != 1 or not isinstance(data.get("days"), list):
+        raise ValidationError(f"既存のstate.jsonが正規形式ではないため上書きしません: {path}")
+    return data
+
+
+def save_state_atomic(path: Path, data: dict[str, Any]) -> None:
+    validate_state(data)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    writing = path.with_name(path.name + ".writing")
+    bak = path.with_name(path.name + ".bak")
+    try:
+        with writing.open("w", encoding="utf-8") as handle:
+            json.dump(data, handle, ensure_ascii=False, indent=2)
+            handle.write("\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        loaded = json.loads(writing.read_text(encoding="utf-8"))
+        validate_state(loaded)
+        if path.exists():
+            shutil.copy2(path, bak)
+        os.replace(writing, path)
+    except Exception:
+        if writing.exists():
+            try:
+                writing.unlink()
+            except OSError:
+                pass
+        raise
+
+
+def _prediction_state_record(raw: dict[str, Any], ticket_count: int, axis: str) -> dict[str, Any]:
+    missing = [field for field in PREDICTION_STATE_FIELDS if field not in raw]
+    if missing:
+        raise ValidationError(f"予想の必須項目が不足しています: {', '.join(missing)}")
+    record = {field: copy.deepcopy(raw[field]) for field in PREDICTION_STATE_FIELDS}
+    record["venue"] = raw["venue"].strip()
+    record["ticket_count"] = ticket_count
+    record["axis"] = axis
+    record["tickets"] = copy.deepcopy(raw["tickets"])
+    record["result"] = None
+    return record
+
+
+def _candidate_state_record(raw: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "venue": raw["venue"].strip(),
+        "race": raw["race"],
+        "close_time": raw["close_time"],
+        "prediction_score": raw["prediction_score"],
+        "score_breakdown": copy.deepcopy(raw["score_breakdown"]),
+        "penalties": copy.deepcopy(raw["penalties"]),
+        "selected": raw["selected"],
+        "selection_rank": raw["selection_rank"],
+    }
+
+
+def _find_day(state: dict[str, Any], date: str) -> dict[str, Any] | None:
+    for day in state.get("days", []):
+        if day.get("date") == date:
+            return day
+    return None
+
+
+def upsert_day(state: dict[str, Any], new_day: dict[str, Any]) -> None:
+    days = state.setdefault("days", [])
+    date = new_day["date"]
+    for index, existing in enumerate(days):
+        if existing.get("date") != date:
+            continue
+        preserved = {
+            (pred.get("venue"), pred.get("race")): pred.get("result")
+            for pred in existing.get("predictions", [])
+            if pred.get("result") is not None
+        }
+        for pred in new_day["predictions"]:
+            key = (pred["venue"], pred["race"])
+            if key in preserved:
+                pred["result"] = copy.deepcopy(preserved[key])
+        days[index] = new_day
+        return
+    days.append(new_day)
+
+
+def build_day_from_predictions(
+    data: dict[str, Any], rules: dict[str, Any] | None = None
+) -> dict[str, Any]:
+    rules = rules or load_rules()
+    rubric = rules["scoring_rubric"]
+    weights = rubric["initial_weights"]
+    penalty_codes = set(rubric["penalty_codes"])
+    threshold = rubric["low_quality_day_threshold"]
+    date = validate_date(data.get("date"))
+    expanded = validate_predictions(data)
+    candidates_raw = data.get("candidates")
+    if not isinstance(candidates_raw, list) or len(candidates_raw) < RACE_COUNT:
+        raise ValidationError("candidatesは3レース以上必要です")
+
+    candidates: list[dict[str, Any]] = []
+    seen_keys: set[tuple[str, int]] = set()
+    for raw in candidates_raw:
+        if not isinstance(raw, dict):
+            raise ValidationError("candidateはオブジェクトが必要です")
+        item = {
+            "venue": raw.get("venue"),
+            "race": raw.get("race"),
+            "close_time": raw.get("close_time"),
+            "prediction_score": raw.get("prediction_score"),
+            "score_breakdown": copy.deepcopy(raw.get("score_breakdown")),
+            "penalties": copy.deepcopy(raw.get("penalties")),
+        }
+        key = _race_key(item)
+        if key in seen_keys:
+            raise ValidationError(f"candidateが重複しています: {key}")
+        seen_keys.add(key)
+        item["close_time"] = validate_time(item.get("close_time"))
+        if item["close_time"] < MIN_CLOSE_TIME:
+            raise ValidationError("candidateは締切18:00以降が必要です")
+        _validate_scored_item(item, weights, penalty_codes)
+        if "selected" in raw:
+            item["selected"] = raw["selected"]
+        if "selection_rank" in raw:
+            item["selection_rank"] = raw["selection_rank"]
+        candidates.append(item)
+
+    ranked = sorted(
+        candidates,
+        key=lambda item: (
+            -item["prediction_score"],
+            -item["score_breakdown"]["axis_reliability"],
+            -item["score_breakdown"]["scenario_simplicity"],
+            -item["score_breakdown"]["recent_form"],
+            item["venue"],
+            item["race"],
+        ),
+    )
+    top_three = ranked[:RACE_COUNT]
+    expected_low_quality = top_three[-1]["prediction_score"] < threshold
+    if "low_quality_day" in data and data.get("low_quality_day") is not expected_low_quality:
+        raise ValidationError(
+            f"low_quality_dayは3位スコア{top_three[-1]['prediction_score']}に対して{expected_low_quality}です"
+        )
+    for rank, candidate in enumerate(ranked, start=1):
+        if rank <= RACE_COUNT:
+            expected_selected, expected_rank = True, rank
+        else:
+            expected_selected, expected_rank = False, None
+        if "selected" in candidate and candidate["selected"] is not expected_selected:
+            raise ValidationError("上位3候補のselected/selection_rankが不正です")
+        if "selection_rank" in candidate and candidate.get("selection_rank") != expected_rank:
+            raise ValidationError("上位3候補のselected/selection_rankが不正です")
+        candidate["selected"] = expected_selected
+        candidate["selection_rank"] = expected_rank
+
+    top_keys = {_race_key(item) for item in top_three}
+    predictions: list[dict[str, Any]] = []
+    for raw, tickets in zip(data["predictions"], expanded):
+        key = _race_key(raw)
+        if key not in top_keys:
+            raise ValidationError("predictionsはcandidates上位3レースと一致が必要です")
+        candidate = next(item for item in candidates if _race_key(item) == key)
+        _validate_scored_item(raw, weights, penalty_codes)
+        for field in ("prediction_score", "score_breakdown", "penalties"):
+            if raw.get(field) != candidate.get(field):
+                raise ValidationError(f"predictionとcandidateの{field}が一致しません")
+        first_count = raw.get("first_place_candidate_count")
+        if first_count not in {1, 2}:
+            raise ValidationError("1着候補数は1または2が必要です")
+        ticket_count = sum(len(ticket.combinations) for ticket in tickets)
+        if "ticket_count" in raw and raw["ticket_count"] != ticket_count:
+            raise ValidationError("ticket_countが買い目点数と一致しません")
+        axis = extract_axis(raw["tickets"])
+        if "axis" in raw and raw["axis"] != axis:
+            raise ValidationError("axisが本線先頭と一致しません")
+        predictions.append(_prediction_state_record(raw, ticket_count, axis))
+
+    return {
+        "date": date,
+        "low_quality_day": expected_low_quality,
+        "candidates": [_candidate_state_record(item) for item in candidates],
+        "predictions": predictions,
+    }
+
+
+def record_predictions(data: dict[str, Any], state_path: str | Path) -> dict[str, Any]:
+    state_path = Path(state_path)
+    day = build_day_from_predictions(data)
+    state = load_state_for_update(state_path)
+    upsert_day(state, day)
+    validate_state(state)
+    save_state_atomic(state_path, state)
+    return {"date": day["date"], "races": RACE_COUNT, "path": str(state_path)}
+
+
+def pull_state(
+    state_path: str | Path,
+    *,
+    store: drive_state.DriveStateStore | None = None,
+    file_id: str | None = None,
+) -> dict[str, Any]:
+    state_path = Path(state_path)
+    resolved_id = drive_state.require_state_file_id(file_id)
+    client = store if store is not None else drive_state.default_drive_store()
+    raw = client.download(resolved_id)
+    data = drive_state.parse_remote_state_bytes(raw)
+    validate_state(data)
+    save_state_atomic(state_path, data)
+    return data
+
+
+def push_state(
+    state_path: str | Path,
+    *,
+    store: drive_state.DriveStateStore | None = None,
+    file_id: str | None = None,
+) -> dict[str, Any]:
+    state_path = Path(state_path)
+    resolved_id = drive_state.require_state_file_id(file_id)
+    client = store if store is not None else drive_state.default_drive_store()
+    data = load_state_for_update(state_path)
+    validate_state(data)
+    client.upload_replace(resolved_id, drive_state.encode_state_bytes(data))
+    return {"path": str(state_path), "file_id_env": drive_state.FILE_ID_ENV}
+
+
+def _require_drive_pair(from_drive: bool, to_drive: bool) -> None:
+    if from_drive ^ to_drive:
+        raise ValidationError(
+            "record-predictions / record-results では --from-drive と --to-drive をセットで指定してください（または --drive）"
+        )
+
+
+def run_record_predictions(
+    data: dict[str, Any],
+    state_path: str | Path,
+    *,
+    from_drive: bool = False,
+    to_drive: bool = False,
+    drive_store: drive_state.DriveStateStore | None = None,
+    drive_file_id: str | None = None,
+    sheets_hook: Callable[..., Any] | None = None,
+    chatwork_hook: Callable[..., Any] | None = None,
+) -> dict[str, Any]:
+    _require_drive_pair(from_drive, to_drive)
+    if from_drive:
+        pull_state(state_path, store=drive_store, file_id=drive_file_id)
+    result = record_predictions(data, state_path)
+    if to_drive:
+        push_state(state_path, store=drive_store, file_id=drive_file_id)
+    if sheets_hook is not None:
+        sheets_hook()
+    if chatwork_hook is not None:
+        chatwork_hook()
+    return result
+
+
+def run_record_results(
+    data: dict[str, Any],
+    state_path: str | Path,
+    *,
+    from_drive: bool = False,
+    to_drive: bool = False,
+    drive_store: drive_state.DriveStateStore | None = None,
+    drive_file_id: str | None = None,
+    sheets_hook: Callable[..., Any] | None = None,
+    chatwork_hook: Callable[..., Any] | None = None,
+) -> dict[str, Any]:
+    _require_drive_pair(from_drive, to_drive)
+    if from_drive:
+        pull_state(state_path, store=drive_store, file_id=drive_file_id)
+    result = record_results(data, state_path)
+    if to_drive:
+        push_state(state_path, store=drive_store, file_id=drive_file_id)
+    if sheets_hook is not None:
+        sheets_hook()
+    if chatwork_hook is not None:
+        chatwork_hook()
+    return result
+
+
+def record_results(data: dict[str, Any], state_path: str | Path) -> dict[str, Any]:
+    validate_results(data)
+    state_path = Path(state_path)
+    state = load_state_for_update(state_path)
+    date = validate_date(data.get("date"))
+    day = _find_day(state, date)
+    if day is None:
+        raise ValidationError(
+            f"{date} の予想レコードがstateにありません。先にrecord-predictionsを実行してください。"
+        )
+    predictions = {item.get("number"): item for item in day.get("predictions", [])}
+    for item in data["results"]:
+        number = item["number"]
+        pred = predictions.get(number)
+        if pred is None:
+            raise ValidationError(
+                f"予想{number}がstateにありません。先にrecord-predictionsを実行してください。"
+            )
+        if item.get("venue") and str(item["venue"]).strip() != pred.get("venue"):
+            raise ValidationError(f"予想{number}: venueがstateと一致しません")
+        if item.get("race") is not None and item["race"] != pred.get("race"):
+            raise ValidationError(f"予想{number}: raceがstateと一致しません")
+        tickets = pred.get("tickets")
+        axis = pred.get("axis")
+        if not tickets or not axis:
+            raise ValidationError(f"予想{number}: axis/ticketsが無いため結果を追記できません")
+        if item["points"] != pred.get("ticket_count"):
+            raise ValidationError(f"予想{number}: pointsがticket_countと一致しません")
+        stake = item.get("stake", pred["ticket_count"] * 100)
+        if not isinstance(stake, int) or stake <= 0:
+            raise ValidationError(f"予想{number}: stakeは1以上の整数が必要です")
+        status = item["status"]
+        primary = item.get("primary_miss_reason")
+        secondary = item.get("secondary_miss_reasons", [])
+        if not isinstance(secondary, list) or len(secondary) != len(set(secondary)):
+            raise ValidationError(f"予想{number}: secondary_miss_reasonsは重複のない配列が必要です")
+        if status == "的中":
+            if primary is not None or secondary:
+                raise ValidationError(f"予想{number}: 的中時にmiss_reasonは保存しません")
+        else:
+            if primary not in MISS_REASONS:
+                raise ValidationError(f"予想{number}: ハズレ時はprimary_miss_reasonが必要です")
+            if primary in secondary or any(reason not in MISS_REASONS for reason in secondary):
+                raise ValidationError(f"予想{number}: secondary_miss_reasonsが不正です")
+        close_miss = compute_close_miss(
+            status=status,
+            axis=str(axis),
+            tickets=tickets,
+            trifecta=item["trifecta"],
+        )
+        if "close_miss" in item and item["close_miss"] is not close_miss:
+            raise ValidationError(f"予想{number}: close_missの指定が自動判定と一致しません")
+        pred["result"] = {
+            "status": status,
+            "stake": stake,
+            "payout": item["payout"],
+            "trifecta": item["trifecta"],
+            "primary_miss_reason": None if status == "的中" else primary,
+            "secondary_miss_reasons": [] if status == "的中" else list(secondary),
+            "close_miss": close_miss,
+        }
+    validate_state(state)
+    save_state_atomic(state_path, state)
+    completed = [item for item in day["predictions"] if item.get("result")]
+    return {"date": date, "completed": len(completed), "path": str(state_path)}
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -625,12 +1107,72 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Chatworkへ実送信する明示確認。指定がなければ送信しない",
     )
+    for name in ("record-predictions", "record-results"):
+        command = subparsers.add_parser(name)
+        command.add_argument("json_file")
+        command.add_argument(
+            "--state",
+            dest="state_path",
+            default=None,
+            help="内部state.jsonの保存先。省略時は state/state.json",
+        )
+        command.add_argument(
+            "--from-drive",
+            action="store_true",
+            help="開始時に KEIRIN_STATE_DRIVE_FILE_ID の既存ファイルを取得する",
+        )
+        command.add_argument(
+            "--to-drive",
+            action="store_true",
+            help="upsert成功後に同じDriveファイルIDを上書きする（新規作成しない）",
+        )
+        command.add_argument(
+            "--drive",
+            action="store_true",
+            help="--from-drive と --to-drive の両方（定期実行用）",
+        )
+    for name in ("pull-state", "push-state"):
+        command = subparsers.add_parser(name)
+        command.add_argument(
+            "--state",
+            dest="state_path",
+            default=None,
+            help="内部state.jsonの保存先。省略時は state/state.json",
+        )
     return parser
+
+
+def _resolve_record_drive_flags(args: argparse.Namespace) -> tuple[bool, bool]:
+    from_drive = bool(getattr(args, "from_drive", False) or getattr(args, "drive", False))
+    to_drive = bool(getattr(args, "to_drive", False) or getattr(args, "drive", False))
+    return from_drive, to_drive
+
+
+def _resolve_state_path_for_record(args: argparse.Namespace) -> Path:
+    from_drive, to_drive = _resolve_record_drive_flags(args)
+    if args.state_path:
+        return Path(args.state_path)
+    if from_drive and to_drive:
+        return default_state_path()
+    raise ValidationError(
+        "定期実行では --from-drive --to-drive（または --drive）が必要です。"
+        "ローカル検証は --state で一時ファイルを指定してください。"
+    )
 
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
+        if args.command == "pull-state":
+            state_path = Path(args.state_path) if args.state_path else default_state_path()
+            pull_state(state_path)
+            print(f"OK: Driveからstateを取得しました: {state_path}")
+            return 0
+        if args.command == "push-state":
+            state_path = Path(args.state_path) if args.state_path else default_state_path()
+            push_state(state_path)
+            print(f"OK: 同じDriveファイルIDへstateを上書きしました: {state_path}")
+            return 0
         data = load_json(args.json_file)
         if args.command == "validate-predictions":
             expanded = validate_predictions(data)
@@ -666,8 +1208,38 @@ def main(argv: list[str] | None = None) -> int:
                 raise ValidationError("CHATWORK_API_TOKENとCHATWORK_ROOM_IDが必要です")
             result = send_chatwork(message, token, room_id)
             print(json.dumps(result, ensure_ascii=False))
+        elif args.command == "record-predictions":
+            state_path = _resolve_state_path_for_record(args)
+            from_drive, to_drive = _resolve_record_drive_flags(args)
+            result = run_record_predictions(
+                data,
+                state_path,
+                from_drive=from_drive,
+                to_drive=to_drive,
+            )
+            print(
+                f"OK: {result['date']} の予想{result['races']}レースをstateへ保存しました: {result['path']}"
+            )
+        elif args.command == "record-results":
+            state_path = _resolve_state_path_for_record(args)
+            from_drive, to_drive = _resolve_record_drive_flags(args)
+            result = run_record_results(
+                data,
+                state_path,
+                from_drive=from_drive,
+                to_drive=to_drive,
+            )
+            print(
+                f"OK: {result['date']} の結果を{result['completed']}レース分追記しました: {result['path']}"
+            )
         return 0
-    except (ValidationError, RuntimeError, json.JSONDecodeError) as exc:
+    except (
+        ValidationError,
+        RuntimeError,
+        OSError,
+        json.JSONDecodeError,
+        drive_state.DriveStateError,
+    ) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 1
 

@@ -3,6 +3,7 @@ import json
 import sys
 import unittest
 from pathlib import Path
+from unittest import mock
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -12,6 +13,84 @@ workflow = importlib.util.module_from_spec(SPEC)
 assert SPEC.loader is not None
 sys.modules[SPEC.name] = workflow
 SPEC.loader.exec_module(workflow)
+
+
+GOLDEN_CHATWORK = "\n".join(
+    [
+        "【予想1】",
+        "",
+        "狙い：鉄板",
+        "自信度：A",
+        "",
+        "テスト競輪場7R 締切時刻18:20",
+        "",
+        "●本線",
+        "1-2-345 　3点",
+        "",
+        "●抑え",
+        "2-1-34 　2点",
+        "",
+        "計5点",
+        "",
+        "●解説",
+        "テスト用の架空データです。実際の予想には使用しません。",
+        "",
+        "【予想2】",
+        "",
+        "狙い：鉄板",
+        "自信度：B",
+        "",
+        "テスト競輪場10R 締切時刻19:30",
+        "",
+        "●本線",
+        "3-4-125 　3点",
+        "",
+        "●抑え",
+        "4-3-12 　2点",
+        "",
+        "計5点",
+        "",
+        "●解説",
+        "テスト用の架空データです。実際の予想には使用しません。",
+        "",
+        "【予想3】",
+        "",
+        "狙い：中穴",
+        "自信度：B",
+        "",
+        "テスト競輪場12R 締切時刻20:15",
+        "",
+        "●本線",
+        "5-6-123 　3点",
+        "",
+        "●抑え",
+        "6-5-12 　2点",
+        "",
+        "計5点",
+        "",
+        "●解説",
+        "テスト用の架空データです。実際の予想には使用しません。",
+    ]
+)
+
+LEARNING_LEAK_TERMS = (
+    "prediction_score",
+    "score_breakdown",
+    "penalties",
+    "close_miss",
+    "primary_miss_reason",
+    "secondary_miss_reasons",
+    "low_quality_day",
+    "axis_reliability",
+    "line_clarity",
+    "ability_gap",
+    "scenario_simplicity",
+    "recent_form",
+    "track_style_fit",
+    "risk_absence",
+    "first_place_candidate_count",
+    "selection_rank",
+)
 
 
 class KeirinWorkflowTest(unittest.TestCase):
@@ -56,11 +135,38 @@ class KeirinWorkflowTest(unittest.TestCase):
 
     def test_formats_chatwork_message(self):
         message = workflow.format_predictions(self.load_predictions())
+        self.assertEqual(message, GOLDEN_CHATWORK)
         self.assertIn("【予想1】", message)
         self.assertIn("計5点", message)
         self.assertEqual(message.count("【予想"), 3)
         self.assertNotIn("prediction_score", message)
         self.assertNotIn("penalties", message)
+        self.assertNotIn("axis", message)
+        for term in LEARNING_LEAK_TERMS:
+            self.assertNotIn(term, message)
+
+    def test_send_predictions_uses_unchanged_format_and_does_not_send_without_confirm(self):
+        pred_path = ROOT / "examples" / "predictions.example.json"
+        with mock.patch.object(workflow, "format_predictions", wraps=workflow.format_predictions) as fmt:
+            with mock.patch.object(workflow, "send_chatwork") as send:
+                code = workflow.main(["send-predictions", str(pred_path)])
+        self.assertEqual(code, 1)
+        fmt.assert_called_once()
+        send.assert_not_called()
+        self.assertEqual(workflow.format_predictions(self.load_predictions()), GOLDEN_CHATWORK)
+
+    def test_record_predictions_does_not_touch_chatwork(self):
+        import tempfile
+
+        data = json.loads((ROOT / "examples" / "day_predictions.example.json").read_text(encoding="utf-8"))
+        with tempfile.TemporaryDirectory() as tmp:
+            state_path = Path(tmp) / "state.json"
+            with mock.patch.object(workflow, "format_predictions") as fmt:
+                with mock.patch.object(workflow, "send_chatwork") as send:
+                    workflow.record_predictions(data, state_path)
+            fmt.assert_not_called()
+            send.assert_not_called()
+        self.assertEqual(workflow.format_predictions(self.load_predictions()), GOLDEN_CHATWORK)
 
     def test_example_results_are_valid(self):
         with (ROOT / "examples" / "results.example.json").open(encoding="utf-8") as handle:
