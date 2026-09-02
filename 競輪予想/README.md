@@ -10,7 +10,7 @@ Cursor側に実行コードが保存されていなかったため、ChatGPTか�
 今日の競輪予想を実行して
 ```
 
-この依頼で、当日3レースの調査・予想、Drive上の内部state取得と上書き、Google Sheets記入、再読検証、Chatwork送信、送信確認まで行う。Drive取得または保存が失敗したらシート記入とChatwork送信はしない。
+この依頼で、当日3レースの調査・予想、Google Sheets記入、再読検証、Chatwork送信、送信確認まで行う。それらが完了したあと、当日分の予想JSONを Drive「マイドライブ / ChatGPT / 競輪学習 / inbox」へ `YYYY-MM-DD.predictions.json` として保存し、同じファイルを再読する。学習JSONの保存失敗はSheets記入とChatwork送信の成功を取り消さない。失敗時は完了報告に「学習JSON未保存」と書く。
 
 ### 結果を記載
 
@@ -18,7 +18,7 @@ Cursor側に実行コードが保存されていなかったため、ChatGPTか�
 昨日の競輪結果を記載して
 ```
 
-この依頼で、公式結果確認、Drive上の内部state取得と結果追記・上書き、予想記入シートの結果欄、予想集計シートのP〜R列、集計値の確認まで行う。Drive取得または保存が失敗したらシート更新はしない。
+この依頼で、公式結果確認、予想記入シートの結果欄、予想集計シートのP〜R列、集計値の確認まで行う。それらが完了したあと、対象日の結果JSONを同じinboxへ `YYYY-MM-DD.results.json` として保存し、同じファイルを再読する。学習JSONの保存失敗はSheets更新の成功を取り消さない。失敗時は完了報告に「学習JSON未保存」と書く。
 
 ### 外部更新なしで確認
 
@@ -52,11 +52,13 @@ Cursor側に実行コードが保存されていなかったため、ChatGPTか�
 
 `prediction_score` はレースの予想しやすさ、`confidence` は作成した買い目への確信度として完全に分離する。締切18:00以降の全候補を100点満点で比較し、上位3レースを採用する。3位が70点未満でも3レースは作成し、内部stateへ `low_quality_day=true` を残す。
 
-6:00は Drive pull → `record-predictions` → 同じDriveファイルIDへの上書きが成功してからSheets記入とChatwork送信へ進む。4:00は Drive pull → `record-results` → 同じDriveファイルIDへの上書きが成功してからSheets結果更新へ進む。`axis` は本線先頭から自動抽出し、`close_miss` は結果追記時に自動判定する。レポートは初期配点を変更せず、`recommended_weights` として提案だけを出す。
+本番の6:00は、調査・予想・検証・Sheets記入・Chatwork送信のあと、接続済みDriveのinboxへ当日の `YYYY-MM-DD.predictions.json` を保存する。4:00はSheets結果更新のあと、`YYYY-MM-DD.results.json` を同じinboxへ保存する。`keirin_learning_state.json` はWorkから読まない・書かない。`--drive` は本番では使わない。
 
-実データの `state/*.json` はGit管理対象外であり、Google SheetsとChatworkにも出力しない。ChatGPT Workの定期実行ではローカルstateが残らないため、既存のGoogle Drive JSON（`KEIRIN_STATE_DRIVE_FILE_ID`、想定ファイル名 `keirin_learning_state.json`）を上書きして引き継ぐ。認証は `GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON`。ファイルIDと秘密情報はGitへ書かない。既存の鉄板／中穴／大穴、自信度、シート列、Chatwork本文は変更しない。
+`axis` と `close_miss` は、Cursorがinboxを正規stateへ合成するときに既存の `record-predictions` / `record-results` が自動抽出・自動判定する。レポートは初期配点を変更せず、`recommended_weights` として提案だけを出す。
 
-Drive取得・保存の直前には、ファイル名（`keirin_learning_state.json`）・MIMEタイプ（`application/json`/`text/plain`）・内容（`version:1`と配列の`days`）を必ず検証し、1つでも合わなければ中断する。ローカルstateが空のときに既存Drive stateを空で上書きすることも防ぐ。誤って別ファイルIDを設定した場合の事故防止策。
+実データの学習JSONはGit管理対象外であり、Google SheetsとChatworkにも出力しない。WorkへサービスアカウントJSONやファイルIDは置かない。既存の鉄板／中穴／大穴、自信度、シート列、Chatwork本文は変更しない。
+
+100R後または週次で、Cursorがinboxの日次JSONを日付順に `record-predictions` / `record-results` へ渡し、正規stateへ合成する。
 
 ## ローカル検証
 
@@ -71,19 +73,12 @@ python3 競輪予想/tools/keirin_workflow.py validate-predictions 競輪予想/
 python3 競輪予想/tools/keirin_workflow.py format-predictions 競輪予想/examples/predictions.example.json
 python3 競輪予想/tools/keirin_workflow.py record-predictions 競輪予想/examples/day_predictions.example.json --state /tmp/keirin-state.json
 python3 競輪予想/tools/keirin_workflow.py record-results 競輪予想/examples/results.example.json --state /tmp/keirin-state.json
-
-定期実行（ChatGPT Work）は毎回空の実行環境なので、Drive往復付きで1コマンドにする。
-
-```bash
-python3 競輪予想/tools/keirin_workflow.py record-predictions 当日.json --drive
-python3 競輪予想/tools/keirin_workflow.py record-results 結果.json --drive
-```
-
-`--drive` は開始時に既存ファイルを取得し、upsert成功後に同じIDを上書きする。`KEIRIN_STATE_DRIVE_FILE_ID` と `GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON` が必要。IDが無いときは失敗し、Sheets / Chatwork には進まない。
 python3 競輪予想/tools/keirin_workflow.py validate-state 競輪予想/state/state.example.json
 python3 競輪予想/tools/keirin_workflow.py build-learning-report 競輪予想/state/state.example.json
 python3 -m unittest discover -s 競輪予想/tests -v
 ```
+
+本番のChatGPT Workでは `--drive` を使わない。inboxの日次JSONを正規stateへ合成するときだけ、Cursorが `--state` 付きの `record-predictions` / `record-results` を使う。
 
 Chatwork実送信には環境変数が必要。トークンとRoom IDは公開リポジトリへ保存しない。
 
