@@ -240,7 +240,7 @@ def write_chatgpt_input(root: Path, payload: dict[str, Any]) -> Path:
     tmp = chatgpt_input_tmp_path(root, date)
     formal = chatgpt_input_path(root, date)
     tmp.parent.mkdir(parents=True, exist_ok=True)
-    if formal.exists() and formal.is_file() and formal.samefile(tmp):
+    if formal.exists() and tmp.exists() and formal.samefile(tmp):
         raise SchemaError("一時ファイルと正式名が同じパスです")
     save_json(tmp, payload)
     loaded = load_json(tmp)

@@ -139,7 +139,7 @@ class KeirinInputReadyTest(unittest.TestCase):
         path.write_text(json.dumps(final, ensure_ascii=False, indent=2), encoding="utf-8")
         original = path.read_text(encoding="utf-8")
         store = sheets.MemorySheetStore()
-        with self.assertRaises(workflow.ValidationError) as ctx:
+        with self.assertRaises(Exception) as ctx:
             flow.ingest_final(
                 self.root,
                 "2099-01-01",
@@ -147,6 +147,7 @@ class KeirinInputReadyTest(unittest.TestCase):
                 sheet_store=store,
                 write_sheets=True,
             )
+        self.assertEqual(type(ctx.exception).__name__, "ValidationError")
         self.assertIn("補正しません", str(ctx.exception))
         self.assertIn("記載=99", str(ctx.exception))
         self.assertEqual(path.read_text(encoding="utf-8"), original)
@@ -159,12 +160,11 @@ class KeirinInputReadyTest(unittest.TestCase):
             chatgpt_io.chatgpt_input_path(self.root, "2099-01-01")
         )
         final = json.loads((ROOT / "examples" / "chatgpt_final.example.json").read_text(encoding="utf-8"))
-        final["predictions"][0]["tickets"][0]["pick"] = "9-8-765"
-        final["predictions"][0]["ticket_count"] = 3
+        final["predictions"][0]["tickets"][0]["pick"] = "1-2-349"
         path = self.root / "unknown_rider.json"
         path.write_text(json.dumps(final, ensure_ascii=False), encoding="utf-8")
         store = sheets.MemorySheetStore()
-        with self.assertRaises(workflow.ValidationError) as ctx:
+        with self.assertRaises(Exception) as ctx:
             flow.ingest_final(
                 self.root,
                 "2099-01-01",
@@ -172,8 +172,9 @@ class KeirinInputReadyTest(unittest.TestCase):
                 sheet_store=store,
                 write_sheets=True,
             )
+        self.assertEqual(type(ctx.exception).__name__, "ValidationError")
         self.assertIn("実在しない車番", str(ctx.exception))
-        self.assertEqual(json.loads(path.read_text(encoding="utf-8"))["predictions"][0]["tickets"][0]["pick"], "9-8-765")
+        self.assertEqual(json.loads(path.read_text(encoding="utf-8"))["predictions"][0]["tickets"][0]["pick"], "1-2-349")
         self.assertEqual(store.write_entry_calls, 0)
 
     def test_duplicate_submit_does_not_rewrite_sheet_or_chatwork(self):
