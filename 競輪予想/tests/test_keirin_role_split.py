@@ -54,6 +54,8 @@ class KeirinRoleSplitTest(unittest.TestCase):
         path = chatgpt_io.chatgpt_input_path(self.root, "2099-01-01")
         data = json.loads(path.read_text(encoding="utf-8"))
         self.assertEqual(data["role"], "chatgpt_input")
+        self.assertEqual(data["status"], "ready")
+        self.assertTrue(data["data_complete"])
         self.assertGreaterEqual(len(data["candidates"]), 5)
         self.assertLessEqual(len(data["candidates"]), 10)
         for item in data["candidates"]:

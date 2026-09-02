@@ -1151,7 +1151,11 @@ def build_parser() -> argparse.ArgumentParser:
         "ingest-final",
         help="ChatGPT最終予想を取り込む。無ければ停止し、Cursorは予想しない",
     )
-    ingest.add_argument("json_file", nargs="?", help="最終予想JSON。省略時は data/inbox/日付.final.json")
+    ingest.add_argument(
+        "json_file",
+        nargs="?",
+        help="最終予想JSON。省略時は data/inbox/prediction_final_日付.json",
+    )
     ingest.add_argument("--date", help="対象日 YYYY-MM-DD（省略時は今日・JST）")
     ingest.add_argument("--skip-sheets", action="store_true", help="シート転記をせずJSONとガードだけ検証")
     ingest.add_argument(

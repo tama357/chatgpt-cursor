@@ -59,6 +59,7 @@ ChatGPTを司令塔として使い、Cursorはコード編集・開発作業に�
 Cursorはデータ収集・候補抽出・転記・結果記録だけ行う。最終3Rと買い目は作らない。
 
 - **データ**: 「今日の競輪データを集めて」→ `python3 競輪予想/tools/keirin_workflow.py prepare-today`
-- **提出**: ChatGPTの最終予想JSONを渡して「取り込んで」→ `ingest-final`（無いと停止）
+- **ChatGPTに渡すファイル**: 完成済みの `競輪予想/data/inbox/prediction_input_YYYY-MM-DD.json` だけ（`.tmp.json` は未完成）
+- **提出**: ChatGPTの `prediction_final_YYYY-MM-DD.json` を渡して「取り込んで」→ `ingest-final`（無いと停止。検証エラーは補正せず停止）
 - **結果**: 「昨日の競輪結果を記載して」→ `python3 競輪予想/tools/keirin_workflow.py results-yesterday`
 - 詳細: `競輪予想/AGENTS.md`

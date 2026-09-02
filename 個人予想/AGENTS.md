@@ -73,7 +73,7 @@ python3 個人予想/tools/workflow.py save-races kyotei /path/to/races.json --d
 
 この `predict-today` は中央競馬・地方競馬・競艇だけ。提出用競輪の予想はしない。
 
-提出用競輪は `競輪予想/` で、Cursor＝データ、ChatGPT＝最終予想に分離している。操作は `競輪予想/AGENTS.md`。
+提出用競輪は `競輪予想/` で、Cursor＝データ、ChatGPT＝最終予想に分離している。ChatGPTに渡すのは完成済み `prediction_input_YYYY-MM-DD.json` だけ。操作は `競輪予想/AGENTS.md`。
 
 ## 禁止
 

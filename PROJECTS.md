@@ -133,6 +133,7 @@
 
 ## 作業ログ
 
+- 2026-09-02：競輪入力JSONを tmp→正式名で区別し、status/ready・final検証停止（補正なし）・シート/Chatworkの二重送信防止を追加（`競輪予想/`）
 - 2026-09-02：提出用競輪を Cursor＝収集・候補抽出・転記 / ChatGPT＝最終3R・買い目 に分離。既存シート構造は非変更。最終予想が無い提出は停止（`競輪予想/`）
 - 2026-09-02：個人3競技（中央・地方・競艇）を日次JSON正本へ切替。Driveは `ChatGPT/予想学習/{競技}/inbox`。正規stateは日次ジョブから更新しない。競輪本番は変更なし
 - 2026-09-02：競輪学習の本番保存を接続済みDriveの日次JSON（`ChatGPT/競輪学習/inbox` の `YYYY-MM-DD.predictions.json` / `YYYY-MM-DD.results.json`）に変更。Workは `keirin_learning_state.json` と `--drive` を使わない。Sheets・Chatwork成功は学習JSON失敗で取り消さない（`競輪予想/AGENTS.md`, `競輪予想/README.md`）

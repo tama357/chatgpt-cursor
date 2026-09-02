@@ -11,12 +11,24 @@ from typing import Any, Callable
 from keirin_chatgpt_io import (
     SchemaError,
     build_chatgpt_input,
+    chatgpt_final_legacy_path,
     chatgpt_final_path,
     chatgpt_input_path,
+    chatgpt_input_readiness_message,
+    chatgpt_input_tmp_path,
     find_final_prediction,
+    is_chatgpt_input_ready,
+    load_chatgpt_input_for_validation,
     load_json,
     require_chatgpt_final,
     save_json,
+    validate_chatgpt_final_mechanically,
+    write_chatgpt_input,
+)
+from keirin_submission_state import (
+    already_fully_processed,
+    load_submission_state,
+    mark_submission,
 )
 from keirin_fetch import fetch_races_for_date, fetch_results_for_predictions, load_races_file
 from keirin_jst import today_str, yesterday_str
@@ -110,10 +122,12 @@ def prepare_today(
         source = "keirin.jp"
     if not races:
         payload = build_chatgpt_input(date=date, candidates=[], skipped=[], rules=rules)
-        path = save_json(chatgpt_input_path(root, date), payload)
+        path = write_chatgpt_input(root, payload)
         return (
             f"【収集結果】{date} の開催・出走を取得できませんでした（source={source}）。"
-            f" Cursorは予想しません。入力JSON: {path}"
+            f" Cursorは予想しません。"
+            f" 正式ファイルは未作成です。ChatGPTには渡さないでください。"
+            f" 一時ファイル: {path}"
         )
 
     selected, skipped = extract_candidates(races, rules, min_count=5, max_count=10)
@@ -128,13 +142,30 @@ def prepare_today(
             selected = [score_candidate(item, rules) for item in selected]
 
     payload = build_chatgpt_input(date=date, candidates=selected, skipped=skipped, rules=rules)
-    path = save_json(chatgpt_input_path(root, date), payload)
+    path = write_chatgpt_input(root, payload)
     names = "、".join(f"{item['venue']}{item.get('race_number') or item.get('race')}R" for item in selected)
+    ready = is_chatgpt_input_ready(root, date)
+    formal = chatgpt_input_path(root, date)
+    tmp = chatgpt_input_tmp_path(root, date)
+    missing = "、".join(payload.get("missing_fields") or [])
+    if not ready:
+        return (
+            f"【データ未完成】{date} の候補を {len(selected)} レース抽出しましたが、"
+            f"重要情報が欠けているため正式ファイルは作っていません。\n"
+            f"候補: {names or 'なし'}\n"
+            f"欠けている項目: {missing or '不明'}\n"
+            f"一時ファイル: {tmp}\n"
+            f"{chatgpt_input_readiness_message(root, date)}\n"
+            f"最終3Rと買い目は作っていません。ChatGPTには渡さないでください。"
+        )
     return (
         f"【データ準備完了】{date} の候補を {len(selected)} レース抽出しました（{source}）。\n"
         f"候補: {names or 'なし'}\n"
-        f"ChatGPT入力JSON: {path}\n"
-        f"最終3Rと買い目は作っていません。ChatGPTにこのJSONを渡してください。\n"
+        f"ChatGPT入力JSON: {formal}\n"
+        f"{chatgpt_input_readiness_message(root, date)}\n"
+        f"この正式名（{formal.name}）だけをChatGPTに渡してください。"
+        f" {tmp.name} は作成途中なので渡さないでください。\n"
+        f"最終3Rと買い目は作っていません。\n"
         f"最終予想JSONが来るまで提出・シート転記・Chatworkは行いません。"
     )
 
@@ -157,7 +188,6 @@ def _attach_scores_from_candidates(
         item["prediction_score"] = candidate.get("prediction_score")
         item["score_breakdown"] = candidate.get("score_breakdown")
         item["penalties"] = candidate.get("penalties")
-        item["close_time"] = pred.get("close_time") or candidate.get("deadline")
         item["fetched_data"] = candidate.get("fetched_data") or {}
         if "first_place_candidate_count" not in item:
             firsts = {
@@ -188,11 +218,21 @@ def ingest_final(
     except SchemaError as exc:
         return STOP_NO_FINAL + f"\n{exc}"
 
-    if final_data.get("date") and final_data["date"] != date:
-        return STOP_NO_FINAL + f"\n最終予想の日付が {final_data.get('date')} で、対象日 {date} と違います。"
+    input_data = load_chatgpt_input_for_validation(root, date)
+    validate_chatgpt_final_mechanically(
+        final_data,
+        expected_date=date,
+        input_data=input_data,
+    )
 
-    input_path = chatgpt_input_path(root, date)
-    input_data = load_json(input_path) if input_path.exists() else None
+    sub = load_submission_state(root, date)
+    if already_fully_processed(sub):
+        return (
+            f"{date} の最終予想はすでに処理済みです。"
+            f"シート転記もChatwork送信も再実行しません。"
+            f"（処理日時: {sub.get('processed_at') or '不明'}）"
+        )
+
     try:
         predictions = _attach_scores_from_candidates(final_data, input_data)
     except SchemaError as exc:
@@ -204,23 +244,27 @@ def ingest_final(
     notes = ["ChatGPT最終予想を受け取りました。Cursorは内容を改変していません。"]
 
     if write_sheets:
-        store = sheet_store
-        if store is None:
-            try:
-                from keirin_sheets import google_store_from_env
-
-                store = google_store_from_env()
-            except Exception as exc:
-                notes.append(f"Sheets APIに接続できないため転記していません: {exc}")
-                store = None
-        if store is None:
-            notes.append("シート転記なし。最終予想は改変していません。")
+        if sub["sheet_written"]:
+            notes.append("シートはすでに転記済みのため、再書き込みしません。")
         else:
-            try:
-                notes.append(write_predictions_and_reread(store, date, predictions))
-            except (SheetError, Exception) as exc:
-                notes.append(f"シート転記または再読検証に失敗したため、Chatworkは送りません: {exc}")
-                return "\n".join(notes)
+            store = sheet_store
+            if store is None:
+                try:
+                    from keirin_sheets import google_store_from_env
+
+                    store = google_store_from_env()
+                except Exception as exc:
+                    notes.append(f"Sheets APIに接続できないため転記していません: {exc}")
+                    store = None
+            if store is None:
+                notes.append("シート転記なし。最終予想は改変していません。")
+            else:
+                try:
+                    notes.append(write_predictions_and_reread(store, date, predictions))
+                    sub = mark_submission(root, date, sheet_written=True)
+                except (SheetError, Exception) as exc:
+                    notes.append(f"シート転記または再読検証に失敗したため、Chatworkは送りません: {exc}")
+                    return "\n".join(notes)
     else:
         notes.append("シート転記はスキップしました（ローカル検証）。")
 
@@ -233,18 +277,12 @@ def ingest_final(
         record_fn(day_payload)
     else:
         try:
-            from keirin_workflow import build_day_from_predictions, expand_pick, extract_axis
+            from keirin_workflow import build_day_from_predictions, extract_axis
 
             for pred in predictions:
                 tickets = pred.get("tickets") or []
-                pred["axis"] = extract_axis(tickets)
-                total = 0
-                for ticket in tickets:
-                    total += len(expand_pick(str(ticket["pick"])))
-                if pred.get("ticket_count") != total:
-                    raise SchemaError(
-                        f"予想{pred['number']}: 合計点数が買い目と一致しません（JSON={pred.get('ticket_count')} / 展開={total}）。修正せず停止します。"
-                    )
+                if "axis" not in pred:
+                    pred["axis"] = extract_axis(tickets)
             day = build_day_from_predictions({**day_payload, "date": date})
             day_payload["low_quality_day"] = day["low_quality_day"]
             day_payload["candidates"] = day["candidates"]
@@ -256,11 +294,7 @@ def ingest_final(
                         for item in day["predictions"]
                         if item["number"] == pred["number"]
                     ),
-                    "ticket_count": next(
-                        item["ticket_count"]
-                        for item in day["predictions"]
-                        if item["number"] == pred["number"]
-                    ),
+                    "ticket_count": pred.get("ticket_count"),
                 }
                 for pred in predictions
             ]
@@ -274,11 +308,20 @@ def ingest_final(
         notes.append(f"学習JSON未保存（{exc}）")
 
     if confirm_send:
-        if send_fn is None:
+        if sub["chatwork_sent"]:
+            notes.append("Chatworkはすでに送信済みのため、再送しません。")
+        elif send_fn is None:
             notes.append("Chatwork送信関数が無いため送信していません。")
         else:
-            send_result = send_fn({"date": date, "predictions": final_data["predictions"]})
-            notes.append(f"Chatwork: {send_result}")
+            try:
+                send_result = send_fn({"date": date, "predictions": final_data["predictions"]})
+                sub = mark_submission(root, date, chatwork_sent=True)
+                notes.append(f"Chatwork: {send_result}")
+            except Exception as exc:
+                notes.append(
+                    f"Chatwork送信に失敗しました。成功したシート転記は再書き込みしません。"
+                    f"失敗したChatworkだけ再実行できます: {exc}"
+                )
     else:
         notes.append("Chatworkは --confirm-send があるときだけ送ります。")
     return "\n".join(notes)
@@ -317,6 +360,8 @@ def process_results(
     pred_path = Path(root) / "data" / "inbox" / f"{date}.predictions.json"
     if not pred_path.exists():
         final_path = chatgpt_final_path(root, date)
+        if not final_path.exists():
+            final_path = chatgpt_final_legacy_path(root, date)
         if not final_path.exists():
             return f"{date} の最終予想がありません。Cursorは結果を推測して埋めません。"
         pred_doc = {"date": date, "predictions": load_json(final_path).get("predictions") or []}

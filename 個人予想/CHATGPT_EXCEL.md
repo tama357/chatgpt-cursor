@@ -39,7 +39,7 @@ ChatGPT に渡す手順（原田さん）:
 - `競馬_予想集計シート_2026年9月.xlsx`（旧・統合）
 - `競輪_個人_予想記入シート.xlsx`
 - `競輪_個人_予想集計シート.xlsx`
-- 提出用 `競輪予想/`（Cursorはデータのみ。最終予想はChatGPT。`競輪予想/AGENTS.md`）
+- 提出用 `競輪予想/`（Cursorはデータのみ。最終予想はChatGPT。渡すのは完成済み `prediction_input_YYYY-MM-DD.json` だけ。`競輪予想/AGENTS.md`）
 
 ## Cursor 側の自動更新
 

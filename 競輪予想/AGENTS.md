@@ -14,7 +14,7 @@ Cursorはデータ収集・整理・記録・集計・検証だけを行う。
 JSON作成とコマンド実行は Cursor が行う。原田さんにコマンド入力はさせない。
 
 1. Cursorが候補5〜10Rの入力JSONを作る
-2. そのJSONを ChatGPT に渡す
+2. **正式名** `prediction_input_YYYY-MM-DD.json` だけを ChatGPT に渡す（`.tmp.json` は未完成）
 3. ChatGPTが最終予想JSONを返す
 4. そのJSONを Cursor に渡し、「取り込んで」と伝える
 5. 最終予想が揃って初めて、既存シートへ転記する
@@ -63,8 +63,9 @@ Chatwork送信は明示トリガーと `--confirm-send` がある場合に限り
 1. 日本時間の対象日を確定する。
 2. keirin.jp から開催場、レース番号、締切時刻、出走選手、脚質、級班、直近成績、今場所・前場所、欠場フラグ、オッズ（取れる場合）を集める。取れない項目は null と risk_factors に残す。
 3. 締切18:00以降を `prediction_score` で並べ、5〜10レースを候補にする。最終3Rは決めない。
-4. `data/inbox/YYYY-MM-DD.chatgpt_input.json` を保存する。形式は `examples/chatgpt_input.example.json`。
-5. ここで停止する。買い目もシートもChatworkも触らない。
+4. 作成途中は `data/inbox/prediction_input_YYYY-MM-DD.tmp.json` に書く。全データ取得・検証が終わり、重要情報が揃ってから、原子的な rename で `prediction_input_YYYY-MM-DD.json` へ切り替える。失敗時に正式名の半端ファイルは残さない。
+5. 正式名があり `status=ready` かつ `data_complete=true` のときだけ、ChatGPTが処理してよい。tmp だけ残っている日は未完成。
+6. ここで停止する。買い目もシートもChatworkも触らない。
 
 ```bash
 python3 競輪予想/tools/keirin_workflow.py prepare-today
@@ -76,30 +77,52 @@ python3 競輪予想/tools/keirin_workflow.py prepare-today
 
 候補レースごとに、取れた範囲で次を入れる。ChatGPTがこのファイルだけで判断できるようにする。
 
-- race, venue, race_number, deadline, prediction_score
-- riders, score, recent_results, line, winning_style, B_count
+状態情報（必須）:
+
+- `date` / `generated_at` / `status` / `candidate_count` / `data_complete` / `missing_fields` / `source_updated_at`
+- 完成時は `status="ready"` かつ `data_complete=true`
+
+**重要情報**（欠けている間は正式名へ切り替えない。`missing_fields` に記録し、`status` は ready にしない）:
+
+- 全体: `date`
+- 候補が3レース以上
+- 各候補: `race`（例: 会場7R）、`venue`、`race_number`、`deadline`（または `close_time`）、`riders`（車番付きの出走選手が1人以上）
+
+候補レースごとに、取れた範囲で次も入れる。
+
+- prediction_score, score, recent_results, line, winning_style, B_count
 - current_meeting_results, previous_meeting_results
 - odds, risk_factors, source
 
 原田さんが ChatGPT に渡すとき:
 
-1. Cursorが作った `YYYY-MM-DD.chatgpt_input.json` を添付する
-2. 「この候補データだけで、今日の最終3レースと買い目をJSONで返して」と伝える
-3. 返ってきたJSONを Cursor に渡す
+1. Cursorが作った **正式名** `prediction_input_YYYY-MM-DD.json` だけを添付する
+2. `prediction_input_YYYY-MM-DD.tmp.json` は作成途中なので渡さない
+3. 「この候補データだけで、今日の最終3レースと買い目をJSONで返して」と伝える
+4. 返ってきたJSONを `prediction_final_YYYY-MM-DD.json` として Cursor に渡す
 
 受け取り形式は `examples/chatgpt_final.example.json`。
 
 ## 最終予想の取り込み（Cursor）
 
 ```bash
-python3 競輪予想/tools/keirin_workflow.py ingest-final 競輪予想/data/inbox/YYYY-MM-DD.final.json
+python3 競輪予想/tools/keirin_workflow.py ingest-final 競輪予想/data/inbox/prediction_final_YYYY-MM-DD.json
 ```
 
-1. 必須項目を確認する。欠けていれば停止する。
-2. 既存の予想記入シートへ、A〜I列とK列の値だけを転記する。J列（合計点数）とL列（Chatwork本文）は自動式なので書かない。
-3. 書き込んだセルを再読し、ChatGPTの最終予想と完全一致しているか確認する。一致しなければChatworkしない。
-4. 従来どおり必要な場合のみ Chatwork へ送る。本文に内部学習項目は混ぜない。
-5. 学習用 `YYYY-MM-DD.predictions.json` を保存し再読する。inbox保存失敗はSheets成功を取り消さない。
+1. 必須項目を確認する。欠けていれば停止する。Cursorはレース・軸・買い目・点数・解説を再予想・修正しない。
+2. 機械的検証だけ行う。エラー時は自動修正せず停止し、失敗内容を日本語で返す。
+   - 対象日一致
+   - 締切18:00以降
+   - 3R以内
+   - 各10点以内
+   - 買い目重複なし
+   - 車番が候補JSONの出走選手として実在する
+   - 展開後点数と記載点数一致
+3. 既存の予想記入シートへ、A〜I列とK列の値だけを転記する。J列（合計点数）とL列（Chatwork本文）は自動式なので書かない。
+4. 書き込んだセルを再読し、ChatGPTの最終予想と完全一致しているか確認する。一致しなければ直さず、Chatworkしない。
+5. 従来どおり必要な場合のみ Chatwork へ送る。本文に内部学習項目は混ぜない。
+6. 学習用 `YYYY-MM-DD.predictions.json` を保存し再読する。inbox保存失敗はSheets成功を取り消さない。
+7. 同じ日付の最終予想を再読しても、シートとChatworkは二重送信しない。内部状態（`data/state/submission_state_YYYY-MM-DD.json` の `sheet_written` / `chatwork_sent` / `processed_at`）だけで管理する。既存シートの列・行・見出しは変えない。処理済みならその旨を日本語で伝える。部分成功（シートだけ書いた／Chatworkだけ失敗）は、成功側は再送せず失敗側だけ再実行する。シートへの二重書き込みはしない。
 
 タブがなければ「テンプレ」を複製し `YYYY/MM/DD` に改名してから記入する。列・行・見出し・数式・書式は変えない。
 
@@ -150,8 +173,9 @@ python3 競輪予想/tools/keirin_workflow.py results-yesterday
 
 保存先：マイドライブ / ChatGPT / 競輪学習 / inbox
 
-- 候補入力：`YYYY-MM-DD.chatgpt_input.json`
-- 最終予想：`YYYY-MM-DD.final.json`
+- 候補入力（完成）：`prediction_input_YYYY-MM-DD.json`
+- 候補入力（作成途中）：`prediction_input_YYYY-MM-DD.tmp.json`
+- 最終予想：`prediction_final_YYYY-MM-DD.json`
 - 6:00相当：`YYYY-MM-DD.predictions.json`
 - 4:00相当：`YYYY-MM-DD.results.json` / `YYYY-MM-DD.learning.json`
 

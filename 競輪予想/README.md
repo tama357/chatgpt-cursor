@@ -13,11 +13,11 @@ Cursorは開催データの収集・候補抽出・記録・検証だけを行�
 
 ### ChatGPTに渡す手順
 
-1. Cursorが `競輪予想/data/inbox/YYYY-MM-DD.chatgpt_input.json` を作る
-2. そのファイルを ChatGPT に添付する
+1. Cursorが完成したら `競輪予想/data/inbox/prediction_input_YYYY-MM-DD.json` を作る（途中は `.tmp.json`）
+2. **正式名だけ**を ChatGPT に添付する。`.tmp.json` は渡さない
 3. 「この候補データだけで、今日の最終3レースと買い目をJSONで返して」と伝える
-4. 返ってきたJSONを Cursor に渡す
-5. 必須項目（選定3レース・狙い・confidence・本線・抑え・合計点数・解説）が揃っているときだけ転記する
+4. 返ってきたJSONを `prediction_final_YYYY-MM-DD.json` として Cursor に渡す
+5. 必須項目（選定3レース・狙い・confidence・本線・抑え・合計点数・解説）が揃い、機械的検証を通ったときだけ転記する。検証エラーは直さず停止する
 
 入力例: `examples/chatgpt_input.example.json`  
 最終予想例: `examples/chatgpt_final.example.json`
@@ -35,8 +35,9 @@ Cursorは開催データの収集・候補抽出・記録・検証だけを行�
 
 - `AGENTS.md`：役割分担、シート範囲、送信ルール
 - `current_rules.json`：機械可読な最新条件。`prediction_score` は候補抽出専用
-- `examples/chatgpt_input.example.json`：ChatGPTへ渡す候補データ
+- `examples/chatgpt_input.example.json`：ChatGPTへ渡す候補データ（`status=ready`）
 - `examples/chatgpt_final.example.json`：ChatGPTから受け取る最終予想（スコア4位を選ぶ例を含む）
+- `examples/README.md`：正式名と一時ファイルの見分け方
 - `examples/races_collect.example.json`：ネット無しの収集テスト用
 - `examples/predictions.example.json`：Chatwork本文用
 - `examples/day_predictions.example.json`：学習inbox用
@@ -61,6 +62,7 @@ Cursorは開催データの収集・候補抽出・記録・検証だけを行�
 ```bash
 python3 競輪予想/tools/keirin_workflow.py prepare-today --date 2099-01-01 --races-file 競輪予想/examples/races_collect.example.json
 python3 競輪予想/tools/keirin_workflow.py ingest-final 競輪予想/examples/chatgpt_final.example.json --date 2099-01-01 --skip-sheets
+# 完成済み入力は prediction_input_日付.json 。tmp は未完成。
 python3 競輪予想/tools/keirin_workflow.py results-yesterday --date 2099-01-01 --results-file 競輪予想/examples/results.example.json --skip-sheets
 python3 競輪予想/tools/keirin_workflow.py validate-predictions 競輪予想/examples/predictions.example.json
 python3 -m unittest discover -s 競輪予想/tests -v

@@ -233,6 +233,8 @@ class MemorySheetStore:
     entry_tabs: dict[str, dict[str, Any]] = field(default_factory=dict)
     summary_tabs: dict[str, dict[str, Any]] = field(default_factory=dict)
     copied_tabs: list[str] = field(default_factory=list)
+    write_entry_calls: int = 0
+    write_summary_calls: int = 0
 
     def ensure_entry_tab(self, date: str) -> str:
         tab = sheet_tab_date(date)
@@ -245,6 +247,7 @@ class MemorySheetStore:
         return tab
 
     def write_entry(self, tab: str, updates: list[CellUpdate]) -> None:
+        self.write_entry_calls += 1
         sheet = self.entry_tabs.setdefault(tab, {})
         for item in updates:
             sheet[item.a1] = item.value
@@ -270,6 +273,7 @@ class MemorySheetStore:
         return 13 + (day - 1) * 3
 
     def write_summary(self, tab: str, updates: list[CellUpdate]) -> None:
+        self.write_summary_calls += 1
         sheet = self.summary_tabs.setdefault(tab, {})
         for item in updates:
             sheet[item.a1] = item.value

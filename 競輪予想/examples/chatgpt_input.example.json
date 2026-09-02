@@ -2,6 +2,12 @@
   "schema_version": 1,
   "role": "chatgpt_input",
   "date": "2099-01-01",
+  "generated_at": "2099-01-01T06:00:00+09:00",
+  "status": "ready",
+  "candidate_count": 4,
+  "data_complete": true,
+  "missing_fields": [],
+  "source_updated_at": "2099-01-01T06:00:00+09:00",
   "timezone": "Asia/Tokyo",
   "cursor_role": "data_collection_only",
   "chatgpt_role": "final_prediction",
@@ -14,13 +20,12 @@
     "targets": ["鉄板", "中穴", "大穴"],
     "confidence": ["A", "B", "C"]
   },
-  "notes": "これは候補レースのデータです。Cursorは最終3Rも買い目も決めていません。ChatGPTはこのJSONだけを見て、選定3レース・狙い・confidence・本線・抑え・合計点数・解説を返してください。",
+  "notes": "これは候補レースのデータです。Cursorは最終3Rも買い目も決めていません。ファイル名が prediction_input_日付.json で status が ready のときだけ処理してください。prediction_input_日付.tmp.json は作成途中なので読まないでください。ChatGPTはこのJSONだけを見て、選定3レース・狙い・confidence・本線・抑え・合計点数・解説を返してください。",
   "candidates": [
     {
       "extract_rank": 1,
       "race": "テスト競輪場A7R",
       "venue": "テスト競輪場A",
-      "race": 7,
       "race_number": 7,
       "deadline": "18:20",
       "close_time": "18:20",
@@ -36,7 +41,11 @@
       },
       "penalties": [{"code": "other", "points": 2}],
       "riders": [
-        {"number": 1, "name": "試験一郎", "winning_style": "逃", "score": null, "recent_results": {"first": 5, "second": 2, "third": 1, "out": 4}}
+        {"number": 1, "name": "試験一郎", "winning_style": "逃", "score": null, "recent_results": {"first": 5, "second": 2, "third": 1, "out": 4}},
+        {"number": 2, "name": "試験二郎", "winning_style": "両", "score": null, "recent_results": {"first": 3, "second": 3, "third": 2, "out": 6}},
+        {"number": 3, "name": "試験三郎", "winning_style": "追", "score": null, "recent_results": {"first": 2, "second": 2, "third": 3, "out": 7}},
+        {"number": 4, "name": "試験四郎", "winning_style": "マ", "score": null, "recent_results": {"first": 1, "second": 1, "third": 2, "out": 8}},
+        {"number": 5, "name": "試験五郎A", "winning_style": "追", "score": null, "recent_results": {"first": 1, "second": 1, "third": 1, "out": 9}}
       ],
       "score": [{"number": 1, "name": "試験一郎", "score": null}],
       "recent_results": [{"number": 1, "recent_results": {"first": 5, "second": 2, "third": 1, "out": 4}}],
@@ -53,7 +62,6 @@
       "extract_rank": 2,
       "race": "テスト競輪場B10R",
       "venue": "テスト競輪場B",
-      "race": 10,
       "race_number": 10,
       "deadline": "19:30",
       "close_time": "19:30",
@@ -68,7 +76,13 @@
         "risk_absence": 8
       },
       "penalties": [{"code": "evenly_matched", "points": 3}],
-      "riders": [],
+      "riders": [
+        {"number": 1, "name": "試験花子1", "winning_style": "追", "score": null},
+        {"number": 2, "name": "試験花子2", "winning_style": "両", "score": null},
+        {"number": 3, "name": "試験花子", "winning_style": "逃", "score": null, "recent_results": {"first": 4, "second": 2, "third": 2, "out": 5}},
+        {"number": 4, "name": "試験次郎", "winning_style": "追", "score": null, "recent_results": {"first": 2, "second": 4, "third": 1, "out": 6}},
+        {"number": 5, "name": "試験花子5", "winning_style": "マ", "score": null}
+      ],
       "score": [],
       "recent_results": [],
       "line": {"styles": ["逃", "追"]},
@@ -84,7 +98,6 @@
       "extract_rank": 3,
       "race": "テスト競輪場C12R",
       "venue": "テスト競輪場C",
-      "race": 12,
       "race_number": 12,
       "deadline": "20:15",
       "close_time": "20:15",
@@ -99,7 +112,9 @@
         "risk_absence": 7
       },
       "penalties": [{"code": "fragmented_race", "points": 3}],
-      "riders": [],
+      "riders": [
+        {"number": 5, "name": "試験五郎", "winning_style": "逃", "score": null, "recent_results": {"first": 3, "second": 2, "third": 2, "out": 6}}
+      ],
       "score": [],
       "recent_results": [],
       "line": {},
@@ -115,7 +130,6 @@
       "extract_rank": 4,
       "race": "テスト競輪場D11R",
       "venue": "テスト競輪場D",
-      "race": 11,
       "race_number": 11,
       "deadline": "20:00",
       "close_time": "20:00",
@@ -130,7 +144,13 @@
         "risk_absence": 6
       },
       "penalties": [{"code": "no_clear_axis", "points": 5}],
-      "riders": [],
+      "riders": [
+        {"number": 1, "name": "試験D1", "winning_style": "逃", "score": null},
+        {"number": 2, "name": "試験D2", "winning_style": "両", "score": null},
+        {"number": 3, "name": "試験D3", "winning_style": "追", "score": null},
+        {"number": 6, "name": "試験D6", "winning_style": "マ", "score": null},
+        {"number": 7, "name": "試験七郎", "winning_style": "両", "score": null, "recent_results": {"first": 1, "second": 1, "third": 1, "out": 10}}
+      ],
       "score": [],
       "recent_results": [],
       "line": {},
