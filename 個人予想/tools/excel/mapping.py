@@ -27,6 +27,9 @@ ENTRY_HEADER_ALIASES = {
     "result_trifecta": ("結果 3連単", "結果3連単"),
     "payout": ("払戻金",),
     "status": ("結果",),
+    "axis": ("軸",),
+    "prediction_score": ("予想しやすさ",),
+    "miss_type": ("外れ型",),
 }
 
 SUMMARY_RACE_HEADERS = ("1本目", "2本目", "3本目", "4本目", "5本目")

@@ -17,7 +17,7 @@ from openpyxl import load_workbook
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(ROOT / "tools"))
-from common.constants import EXCEL_FILENAMES, SPORTS  # noqa: E402
+from common.constants import EXCEL_FILENAMES, MISS_TYPE_MAP, MISS_TYPE_NONE, SPORTS  # noqa: E402
 from excel.mapping import load_entry_mapping, load_summary_mapping  # noqa: E402
 from test_fixtures import (  # noqa: E402
     TEST_DATE,
@@ -47,6 +47,22 @@ def file_hash(path: Path) -> str:
 
 def setup_copies(sandbox: Path) -> dict[str, Path]:
     return {key: sandbox / "excel" / name for key, name in EXCEL_FILENAMES.items()}
+
+
+def add_new_column_headers(path: Path, sheet: str = SHEET) -> None:
+    """第1段階（軸・予想しやすさ・外れ型）の見出しをサンドボックスコピーの右端へ追加する。
+
+    本番Excelには一切触らない（サンドボックスコピーのみに追加する）。
+    既存A〜N列は変更しない。
+    """
+    mapping = load_entry_mapping(path, sheet)
+    wb = load_workbook(path)
+    ws = wb[sheet]
+    ws.cell(mapping.header_row, 15, "軸")
+    ws.cell(mapping.header_row, 16, "予想しやすさ")
+    ws.cell(mapping.header_row, 17, "外れ型")
+    wb.save(path)
+    wb.close()
 
 
 def patch_workflow(workflow, copies: dict[str, Path], sandbox: Path) -> None:
@@ -157,8 +173,11 @@ def main() -> int:
     try:
         copies = setup_copies(sandbox)
         patch_workflow(workflow, copies, sandbox)
+        for sport in SPORTS:
+            add_new_column_headers(copies[f"{sport}_entry"])
 
         predict_check: dict[str, object] = {"step": "predict-all"}
+        new_columns_check: dict[str, object] = {"step": "new-columns-axis-score-misstype"}
         apply_check: dict[str, object] = {"step": "apply-results"}
         for sport in SPORTS:
             entry = copies[f"{sport}_entry"]
@@ -198,6 +217,36 @@ def main() -> int:
             if filled > 5:
                 failed.append(f"{sport} more than 5 races")
 
+            pred_state = workflow.load_json(workflow.state_path(sport))
+            pred_records_by_number = {
+                r["number"]: r
+                for r in pred_state.get("records", [])
+                if r.get("date") == TEST_DATE and r.get("tickets") and r.get("number")
+            }
+            mapping = load_entry_mapping(entry, SHEET)
+            wb_check = load_workbook(entry, data_only=True)
+            ws_check = wb_check[SHEET]
+            axis_ok = True
+            score_ok = True
+            for number, record in pred_records_by_number.items():
+                row = mapping.row_for(_day(TEST_DATE), number)
+                axis_cell = ws_check.cell(row, mapping.columns["axis"]).value
+                score_cell = ws_check.cell(row, mapping.columns["prediction_score"]).value
+                if axis_cell != record.get("axis"):
+                    axis_ok = False
+                if score_cell != record.get("prediction_score"):
+                    score_ok = False
+            wb_check.close()
+            new_columns_check[f"{sport}_axis_matches_state"] = axis_ok
+            new_columns_check[f"{sport}_prediction_score_matches_state"] = score_ok
+            new_columns_check[f"{sport}_predictions_checked"] = len(pred_records_by_number)
+            if not axis_ok:
+                failed.append(f"{sport} axis column mismatch")
+            if not score_ok:
+                failed.append(f"{sport} prediction_score column mismatch")
+            if not pred_records_by_number:
+                failed.append(f"{sport} no prediction records to verify new columns")
+
             workflow.apply_results_from_file(
                 sport,
                 TEST_DATE,
@@ -228,8 +277,37 @@ def main() -> int:
             if not reviewed:
                 failed.append(f"{sport} review missing")
 
+            with_result = {
+                r["number"]: r
+                for r in review_state.get("records", [])
+                if r.get("date") == TEST_DATE and r.get("result") and r.get("number")
+            }
+            wb_check2 = load_workbook(entry, data_only=True)
+            ws_check2 = wb_check2[SHEET]
+            miss_type_ok = True
+            for number, record in with_result.items():
+                row = mapping.row_for(_day(TEST_DATE), number)
+                result = record["result"]
+                if result.get("status") == "的中" or result.get("status") == "未実施":
+                    expected = MISS_TYPE_NONE
+                else:
+                    expected = MISS_TYPE_MAP.get(
+                        result.get("primary_miss_reason"), MISS_TYPE_NONE
+                    )
+                actual = ws_check2.cell(row, mapping.columns["miss_type"]).value
+                if actual != expected:
+                    miss_type_ok = False
+            wb_check2.close()
+            new_columns_check[f"{sport}_miss_type_matches_state"] = miss_type_ok
+            new_columns_check[f"{sport}_results_checked"] = len(with_result)
+            if not miss_type_ok:
+                failed.append(f"{sport} miss_type column mismatch")
+            if not with_result:
+                failed.append(f"{sport} no result records to verify miss_type column")
+
         report["checks"].append(predict_check)
         report["checks"].append(apply_check)
+        report["checks"].append(new_columns_check)
 
         dup_ok = True
         for sport in SPORTS:
