@@ -74,14 +74,15 @@ class NoSampleFallbackTest(ProductionDataGuardMixin, unittest.TestCase):
 
     def test_jra_2026_09_01_no_meeting_production_zero(self):
         """本番モード: 2026-09-01 は JRA非開催。サンプルの中山・阪神・新潟を使わない。"""
+        no_meeting = "2026-09-01"
         with patch.object(
             fetch_jra, "auto_outcome", return_value={"races": [], "status": "no_meeting"}
         ):
             races = fetch_jra.fetch_races(
-                self.sandbox, TEST_DATE, allow_sample=False, try_auto=True
+                self.sandbox, no_meeting, allow_sample=False, try_auto=True
             )
             self.assertEqual(races, [])
-            races_default = fetch_jra.fetch_races(self.sandbox, TEST_DATE)
+            races_default = fetch_jra.fetch_races(self.sandbox, no_meeting)
             self.assertEqual(races_default, [])
             report = workflow.run_predict("jra", TEST_DATE, force=True, sync_drive=False)
         self.assertIn("開催なし", report)

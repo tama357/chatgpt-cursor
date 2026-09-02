@@ -642,6 +642,93 @@ class InitStateTest(ProductionDataGuardMixin, unittest.TestCase):
         self.assertEqual(snapshot_tree(sandbox / "excel"), excel_before)
         self.assertEqual(_count_states(sandbox), 0)
 
+    def test_load_canonical_state_requires_official_start_and_timezone(self):
+        write_canonical_states(self.tmp, start_date="2026-09-01")
+        with self.assertRaises(ValidationError) as ctx:
+            load_canonical_state(self.tmp, "jra")
+        self.assertIn("2026-09-03", str(ctx.exception))
+        payload = json.loads((self.tmp / "data" / "nar" / "state.json").read_text(encoding="utf-8"))
+        payload["start_date"] = START
+        payload["timezone"] = "UTC"
+        (self.tmp / "data" / "nar" / "state.json").write_text(
+            json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+        )
+        with self.assertRaises(ValidationError):
+            load_canonical_state(self.tmp, "nar")
+
+    def test_today_yesterday_report_stop_before_any_write(self):
+        sandbox = make_sandbox(ROOT, copy_excel=True)
+        self.addCleanup(shutil.rmtree, sandbox, True)
+        workflow.ROOT = sandbox
+        cases = (
+            ("missing", None),
+            ("wrong-date", "2026-09-01"),
+            ("one-missing", START),
+            ("mismatch", START),
+        )
+        commands = ("predict-today", "results-yesterday", "report-all")
+        for case, start_date in cases:
+            shutil.rmtree(sandbox / "data", ignore_errors=True)
+            (sandbox / "data").mkdir()
+            if start_date:
+                write_canonical_states(sandbox, start_date=start_date)
+            if case == "one-missing":
+                (sandbox / "data" / "kyotei" / "state.json").unlink()
+            elif case == "mismatch":
+                payload = json.loads(
+                    (sandbox / "data" / "jra" / "state.json").read_text(encoding="utf-8")
+                )
+                payload["start_date"] = "2026-09-05"
+                (sandbox / "data" / "jra" / "state.json").write_text(
+                    json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+                )
+            excel_before = snapshot_tree(sandbox / "excel")
+            data_before = snapshot_tree(sandbox / "data")
+            with (
+                patch.object(
+                    workflow.fetch_jra,
+                    "fetch_races_outcome",
+                    side_effect=AssertionError("公式取得してはいけない"),
+                ),
+                patch.object(
+                    workflow.fetch_nar,
+                    "fetch_races_outcome",
+                    side_effect=AssertionError("公式取得してはいけない"),
+                ),
+                patch.object(
+                    workflow.fetch_kyotei,
+                    "fetch_races_outcome",
+                    side_effect=AssertionError("公式取得してはいけない"),
+                ),
+                patch(
+                    "orchestrator.ensure_race_data",
+                    side_effect=AssertionError("出走取得してはいけない"),
+                ),
+                patch(
+                    "orchestrator.ensure_result_data",
+                    side_effect=AssertionError("結果取得してはいけない"),
+                ),
+                patch.object(
+                    workflow,
+                    "ensure_workbooks",
+                    side_effect=AssertionError("Excelを書いてはいけない"),
+                ),
+                patch.object(
+                    state_mod,
+                    "save_json",
+                    side_effect=AssertionError("stateを書いてはいけない"),
+                ),
+                patch(
+                    "excel.drive_sync.sync_excel_files",
+                    side_effect=AssertionError("Driveへ書いてはいけない"),
+                ),
+            ):
+                for command in commands:
+                    code = workflow.main([command, "--date", START, "--force"])
+                    self.assertEqual(code, 1, f"{case} {command}")
+            self.assertEqual(snapshot_tree(sandbox / "excel"), excel_before)
+            self.assertEqual(snapshot_tree(sandbox / "data"), data_before)
+
     def test_workflow_yml_keeps_schedule_off_without_switch(self):
         text = (
             Path(__file__).resolve().parents[2] / ".github" / "workflows" / "personal-predict.yml"

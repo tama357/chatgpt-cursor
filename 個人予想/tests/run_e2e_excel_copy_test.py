@@ -10,12 +10,15 @@ import shutil
 import sys
 from pathlib import Path
 
+from datetime import datetime
+
 from openpyxl import load_workbook
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(ROOT / "tools"))
 from common.constants import EXCEL_FILENAMES, SPORTS  # noqa: E402
+from excel.mapping import load_entry_mapping, load_summary_mapping  # noqa: E402
 from test_fixtures import (  # noqa: E402
     TEST_DATE,
     make_sandbox,
@@ -76,7 +79,25 @@ def snapshot_merges_and_dv(path: Path, sheet: str) -> tuple[int, int]:
     return merges, dvs
 
 
-def read_entry_rows(path: Path, start: int = 3, end: int = 7) -> list[dict]:
+def _day(date_str: str) -> int:
+    return datetime.strptime(date_str, "%Y-%m-%d").day
+
+
+def entry_row_range(path: Path, date_str: str = TEST_DATE) -> tuple[int, int]:
+    mapping = load_entry_mapping(path, SHEET)
+    day = _day(date_str)
+    return mapping.row_for(day, 1), mapping.row_for(day, 5)
+
+
+def summary_row_range(path: Path, date_str: str = TEST_DATE) -> range:
+    mapping = load_summary_mapping(path, SHEET)
+    start = mapping.day_start_row(_day(date_str))
+    return range(start, start + 3)
+
+
+def read_entry_rows(path: Path, start: int | None = None, end: int | None = None) -> list[dict]:
+    if start is None or end is None:
+        start, end = entry_row_range(path)
     wb = load_workbook(path, data_only=True)
     ws = wb[SHEET]
     rows = []
@@ -87,12 +108,13 @@ def read_entry_rows(path: Path, start: int = 3, end: int = 7) -> list[dict]:
 
 
 def read_summary_pt(path: Path) -> dict[str, list]:
+    rows = list(summary_row_range(path))
     wb = load_workbook(path, data_only=True)
     ws = wb[SHEET]
     data = {
-        "row12_P-T": [ws.cell(12, c).value for c in range(16, 21)],
-        "row13_P-T": [ws.cell(13, c).value for c in range(16, 21)],
-        "row14_P-T": [ws.cell(14, c).value for c in range(16, 21)],
+        "row12_P-T": [ws.cell(rows[0], c).value for c in range(16, 21)],
+        "row13_P-T": [ws.cell(rows[1], c).value for c in range(16, 21)],
+        "row14_P-T": [ws.cell(rows[2], c).value for c in range(16, 21)],
     }
     wb.close()
     return data
@@ -101,7 +123,7 @@ def read_summary_pt(path: Path) -> dict[str, list]:
 def has_formula_errors(path: Path) -> bool:
     wb = load_workbook(path)
     ws = wb[SHEET]
-    for row in ws.iter_rows(min_row=1, max_row=20, min_col=1, max_col=20):
+    for row in ws.iter_rows(min_row=1, max_row=40, min_col=1, max_col=20):
         for cell in row:
             if cell.data_type == "e":
                 wb.close()
@@ -142,7 +164,8 @@ def main() -> int:
             entry = copies[f"{sport}_entry"]
             summary = copies[f"{sport}_summary"]
             before = read_entry_rows(entry)
-            formula_before = snapshot_formulas(summary, SHEET, range(12, 15), range(2, 16))
+            formula_rows = summary_row_range(summary)
+            formula_before = snapshot_formulas(summary, SHEET, formula_rows, range(2, 16))
             merge_before = snapshot_merges_and_dv(entry, SHEET)
 
             pred = workflow.run_predict(
@@ -183,7 +206,7 @@ def main() -> int:
             )
             after_res = read_entry_rows(entry)
             summary_pt = read_summary_pt(summary)
-            formula_after = snapshot_formulas(summary, SHEET, range(12, 15), range(2, 16))
+            formula_after = snapshot_formulas(summary, SHEET, formula_rows, range(2, 16))
             ln = [{k: after_res[i][k] for k in "LMN"} for i in range(min(3, filled))]
             apply_check[f"{sport}_L-N_sample"] = ln
             apply_check[f"{sport}_summary_PT"] = summary_pt

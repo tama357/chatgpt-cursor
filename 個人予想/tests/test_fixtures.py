@@ -9,7 +9,7 @@ import tempfile
 from pathlib import Path
 
 SPORTS = ("jra", "nar", "kyotei")
-TEST_DATE = "2026-09-01"
+TEST_DATE = "2026-09-03"
 PRODUCTION_ROOT = Path(__file__).resolve().parents[1]
 
 

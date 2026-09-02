@@ -41,6 +41,7 @@ from common.state import (  # noqa: E402
     is_processed,
     load_canonical_state,
     load_json,
+    require_production_states,
     mark_processed,
     records_since_start,
     save_json,
@@ -390,7 +391,10 @@ def run_learning_report(sport: str) -> str:
 
 
 def run_summary(target_date: str) -> str:
-    by_sport = {sport: load_json(state_path(sport)).get("records", []) for sport in SPORTS}
+    require_production_states(ROOT)
+    by_sport = {
+        sport: load_canonical_state(ROOT, sport).get("records", []) for sport in SPORTS
+    }
     return format_summary_report(by_sport, target_date)
 
 

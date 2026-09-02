@@ -134,7 +134,26 @@ def load_canonical_state(base_dir: Path, sport: str) -> dict[str, Any]:
         raise ValidationError(
             f"{rel} は正規stateではありません。処理していません。Excelは変更していません。"
         )
+    if data.get("timezone") != STATE_TIMEZONE:
+        raise ValidationError(
+            f"{rel} のtimezoneは{STATE_TIMEZONE}にしてください。処理していません。"
+        )
+    if data.get("start_date") != DEFAULT_START_DATE:
+        raise ValidationError(
+            f"{rel} のstart_dateは{DEFAULT_START_DATE}にしてください。処理していません。"
+        )
     return data
+
+
+def require_production_states(base_dir: Path) -> None:
+    """3競技すべての正規state（開始日 2026-09-03 JST）を処理前に揃える。"""
+    problems = production_state_problems(base_dir)
+    if problems:
+        raise ValidationError(
+            "3競技の正規stateが揃っていないため処理を開始しません: "
+            + ", ".join(problems)
+            + " 公式取得・Excel・state・Driveは変更していません。"
+        )
 
 
 def get_start_date(state: dict[str, Any]) -> str:
