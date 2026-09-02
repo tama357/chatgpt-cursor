@@ -12,8 +12,8 @@
 
 ## 実行トリガー
 
-- 「今日の競輪予想を実行して」：予想作成、内部state保存、予想記入シート更新、再読検証、Chatwork送信、送信結果確認まで行う。`record-predictions` が失敗したらシート記入とChatwork送信には進まない。
-- 「昨日の競輪結果を記載して」：公式結果を確認し、内部stateへ結果追記、予想記入シートと予想集計シートを更新、再読検証する。`record-results` が失敗したらシート更新には進まない。
+- 「今日の競輪予想を実行して」：予想作成、Driveから内部state取得、内部state保存、Driveへ同じファイルIDを上書き、予想記入シート更新、再読検証、Chatwork送信、送信結果確認まで行う。Drive取得・保存または `record-predictions` が失敗したらシート記入とChatwork送信には進まない。
+- 「昨日の競輪結果を記載して」：公式結果を確認し、Driveから内部state取得、内部stateへ結果追記、Driveへ同じファイルIDを上書き、予想記入シートと予想集計シートを更新、再読検証する。Drive取得・保存または `record-results` が失敗したらシート更新には進まない。
 - 「準備して」「確認して」だけでは、予想作成、シート更新、Chatwork送信を行わない。
 
 Chatwork送信は上記の明示トリガーがある場合に限り、同一本文を1回だけ送る。車券は購入しない。
@@ -25,7 +25,13 @@ Chatwork送信は上記の明示トリガーがある場合に限り、同一本
 3. 締切が18:00以降で、展開と軸が比較的読みやすい3レースを選ぶ。
 4. 三連単を1レース10点以内で作る。買い目を展開して実数を数える。
 5. `tools/keirin_workflow.py validate-predictions` 相当の検査を行う。
-6. `tools/keirin_workflow.py record-predictions <当日JSON> --state state/state.json` を実行し、終了コード0を確認する。失敗したらここで終了し、Sheets記入とChatwork送信はしない。
+6. 内部stateを既存Google Drive JSON（`KEIRIN_STATE_DRIVE_FILE_ID`）から取得し、予想をupsertし、同じファイルIDを上書きする。ChatGPT Workの定期実行は毎回空の実行環境なので、このDrive往復が必須。終了コード0を確認する。失敗したらここで終了し、Sheets記入とChatwork送信はしない。
+
+```bash
+python3 競輪予想/tools/keirin_workflow.py record-predictions <当日JSON> --drive
+```
+
+`--drive` は `--from-drive` と `--to-drive` の両方。順序は Drive pull → ローカルupsert → 同じDriveファイルIDへの上書き。Driveの取得または保存が失敗したら後続に進まない。新規Driveファイルは作らない。ファイルIDが未設定なら失敗する。
 7. Google Sheetsの当日タブへ記入する。タブがなければ「テンプレ」を複製し、`YYYY/MM/DD` に改名してから記入する。
 8. 書き込んだセルと自動生成されたChatwork本文を再読し、3レース、18:00以降、重複なし、各10点以内、表記、選手番号、合計点数を確認する。
 9. L2、L17、L32の完成本文を順番に結合し、Chatworkへ1回送信する。Chatwork本文に内部学習項目（prediction_score、score_breakdown、penalties、axis、close_miss 等）を混ぜない。
@@ -61,7 +67,13 @@ Chatwork送信は上記の明示トリガーがある場合に限り、同一本
 ## 翌朝4:00の結果記載フロー
 
 1. 公式結果で対象3レースの三連単着順と払戻金を確認する。
-2. `tools/keirin_workflow.py record-results <結果JSON> --state state/state.json` を実行し、終了コード0を確認する。失敗したらここで終了し、Sheets更新はしない。
+2. 内部stateを既存Google Drive JSON（`KEIRIN_STATE_DRIVE_FILE_ID`）から取得し、結果をupsertし、同じファイルIDを上書きする。終了コード0を確認する。失敗したらここで終了し、Sheets更新はしない。
+
+```bash
+python3 競輪予想/tools/keirin_workflow.py record-results <結果JSON> --drive
+```
+
+順序は Drive pull → ローカルupsert → 同じDriveファイルIDへの上書き。Driveの取得または保存が失敗したら後続に進まない。新規Driveファイルは作らない。
 3. 予想記入シートの当日タブで、M・N・O列へ結果を記載する。
 4. 予想集計シートの対象月・対象日のP〜R列だけを更新する。
 5. 結果行へ `的中` / `ハズレ`、次行へ的中額（外れは0）、次行へ購入点数を入れる。
@@ -75,6 +87,24 @@ Chatwork送信は上記の明示トリガーがある場合に限り、同一本
 - 手入力可能範囲：P〜R列（今回の3レース分）
 - B〜O列は計算式のため編集しない
 - 1日につき3行。対象日の先頭行が結果、次行が的中額、3行目が購入点数
+
+## 内部stateのDrive永続化
+
+ChatGPT Workの定期実行は毎回ローカル `state/state.json` が空になる。前日のstateは既存のGoogle Drive JSONファイルにだけ残す。
+
+- ファイルIDは環境変数 `KEIRIN_STATE_DRIVE_FILE_ID` のみ。Gitへ書かない
+- 認証は `GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON`（個人予想のDrive同期と同じ秘密情報）
+- 既存ファイルを `files.update`（uploadType=media の PATCH）で上書きする。毎回新規作成しない
+- ファイルIDが無い、取得に失敗、壊れたJSON、保存失敗のいずれかなら終了する。Sheets更新とChatwork送信には進まない
+- ローカル検証だけするときは `--state /tmp/keirin-state.json` を使い、Driveフラグは付けない
+
+分割して実行する場合も、失敗したら次へ進まない。
+
+```bash
+python3 競輪予想/tools/keirin_workflow.py pull-state --state state/state.json
+python3 競輪予想/tools/keirin_workflow.py record-predictions <当日JSON> --state state/state.json
+python3 競輪予想/tools/keirin_workflow.py push-state --state state/state.json
+```
 
 ## Chatwork
 

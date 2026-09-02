@@ -17,7 +17,12 @@ import urllib.request
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
+
+_TOOLS_DIR = Path(__file__).resolve().parent
+if str(_TOOLS_DIR) not in sys.path:
+    sys.path.insert(0, str(_TOOLS_DIR))
+import keirin_drive_state as drive_state  # noqa: E402
 
 
 PICK_RE = re.compile(r"^([1-9])-([1-9])-([1-9]+)$")
@@ -927,6 +932,92 @@ def record_predictions(data: dict[str, Any], state_path: str | Path) -> dict[str
     return {"date": day["date"], "races": RACE_COUNT, "path": str(state_path)}
 
 
+def pull_state(
+    state_path: str | Path,
+    *,
+    store: drive_state.DriveStateStore | None = None,
+    file_id: str | None = None,
+) -> dict[str, Any]:
+    state_path = Path(state_path)
+    resolved_id = drive_state.require_state_file_id(file_id)
+    client = store if store is not None else drive_state.default_drive_store()
+    raw = client.download(resolved_id)
+    data = drive_state.parse_remote_state_bytes(raw)
+    validate_state(data)
+    save_state_atomic(state_path, data)
+    return data
+
+
+def push_state(
+    state_path: str | Path,
+    *,
+    store: drive_state.DriveStateStore | None = None,
+    file_id: str | None = None,
+) -> dict[str, Any]:
+    state_path = Path(state_path)
+    resolved_id = drive_state.require_state_file_id(file_id)
+    client = store if store is not None else drive_state.default_drive_store()
+    data = load_state_for_update(state_path)
+    validate_state(data)
+    client.upload_replace(resolved_id, drive_state.encode_state_bytes(data))
+    return {"path": str(state_path), "file_id_env": drive_state.FILE_ID_ENV}
+
+
+def _require_drive_pair(from_drive: bool, to_drive: bool) -> None:
+    if from_drive ^ to_drive:
+        raise ValidationError(
+            "record-predictions / record-results では --from-drive と --to-drive をセットで指定してください（または --drive）"
+        )
+
+
+def run_record_predictions(
+    data: dict[str, Any],
+    state_path: str | Path,
+    *,
+    from_drive: bool = False,
+    to_drive: bool = False,
+    drive_store: drive_state.DriveStateStore | None = None,
+    drive_file_id: str | None = None,
+    sheets_hook: Callable[..., Any] | None = None,
+    chatwork_hook: Callable[..., Any] | None = None,
+) -> dict[str, Any]:
+    _require_drive_pair(from_drive, to_drive)
+    if from_drive:
+        pull_state(state_path, store=drive_store, file_id=drive_file_id)
+    result = record_predictions(data, state_path)
+    if to_drive:
+        push_state(state_path, store=drive_store, file_id=drive_file_id)
+    if sheets_hook is not None:
+        sheets_hook()
+    if chatwork_hook is not None:
+        chatwork_hook()
+    return result
+
+
+def run_record_results(
+    data: dict[str, Any],
+    state_path: str | Path,
+    *,
+    from_drive: bool = False,
+    to_drive: bool = False,
+    drive_store: drive_state.DriveStateStore | None = None,
+    drive_file_id: str | None = None,
+    sheets_hook: Callable[..., Any] | None = None,
+    chatwork_hook: Callable[..., Any] | None = None,
+) -> dict[str, Any]:
+    _require_drive_pair(from_drive, to_drive)
+    if from_drive:
+        pull_state(state_path, store=drive_store, file_id=drive_file_id)
+    result = record_results(data, state_path)
+    if to_drive:
+        push_state(state_path, store=drive_store, file_id=drive_file_id)
+    if sheets_hook is not None:
+        sheets_hook()
+    if chatwork_hook is not None:
+        chatwork_hook()
+    return result
+
+
 def record_results(data: dict[str, Any], state_path: str | Path) -> dict[str, Any]:
     validate_results(data)
     state_path = Path(state_path)
@@ -1025,12 +1116,63 @@ def build_parser() -> argparse.ArgumentParser:
             default=None,
             help="内部state.jsonの保存先。省略時は state/state.json",
         )
+        command.add_argument(
+            "--from-drive",
+            action="store_true",
+            help="開始時に KEIRIN_STATE_DRIVE_FILE_ID の既存ファイルを取得する",
+        )
+        command.add_argument(
+            "--to-drive",
+            action="store_true",
+            help="upsert成功後に同じDriveファイルIDを上書きする（新規作成しない）",
+        )
+        command.add_argument(
+            "--drive",
+            action="store_true",
+            help="--from-drive と --to-drive の両方（定期実行用）",
+        )
+    for name in ("pull-state", "push-state"):
+        command = subparsers.add_parser(name)
+        command.add_argument(
+            "--state",
+            dest="state_path",
+            default=None,
+            help="内部state.jsonの保存先。省略時は state/state.json",
+        )
     return parser
+
+
+def _resolve_record_drive_flags(args: argparse.Namespace) -> tuple[bool, bool]:
+    from_drive = bool(getattr(args, "from_drive", False) or getattr(args, "drive", False))
+    to_drive = bool(getattr(args, "to_drive", False) or getattr(args, "drive", False))
+    return from_drive, to_drive
+
+
+def _resolve_state_path_for_record(args: argparse.Namespace) -> Path:
+    from_drive, to_drive = _resolve_record_drive_flags(args)
+    if args.state_path:
+        return Path(args.state_path)
+    if from_drive and to_drive:
+        return default_state_path()
+    raise ValidationError(
+        "定期実行では --from-drive --to-drive（または --drive）が必要です。"
+        "ローカル検証は --state で一時ファイルを指定してください。"
+    )
 
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
+        if args.command == "pull-state":
+            state_path = Path(args.state_path) if args.state_path else default_state_path()
+            pull_state(state_path)
+            print(f"OK: Driveからstateを取得しました: {state_path}")
+            return 0
+        if args.command == "push-state":
+            state_path = Path(args.state_path) if args.state_path else default_state_path()
+            push_state(state_path)
+            print(f"OK: 同じDriveファイルIDへstateを上書きしました: {state_path}")
+            return 0
         data = load_json(args.json_file)
         if args.command == "validate-predictions":
             expanded = validate_predictions(data)
@@ -1067,19 +1209,37 @@ def main(argv: list[str] | None = None) -> int:
             result = send_chatwork(message, token, room_id)
             print(json.dumps(result, ensure_ascii=False))
         elif args.command == "record-predictions":
-            state_path = Path(args.state_path) if args.state_path else default_state_path()
-            result = record_predictions(data, state_path)
+            state_path = _resolve_state_path_for_record(args)
+            from_drive, to_drive = _resolve_record_drive_flags(args)
+            result = run_record_predictions(
+                data,
+                state_path,
+                from_drive=from_drive,
+                to_drive=to_drive,
+            )
             print(
                 f"OK: {result['date']} の予想{result['races']}レースをstateへ保存しました: {result['path']}"
             )
         elif args.command == "record-results":
-            state_path = Path(args.state_path) if args.state_path else default_state_path()
-            result = record_results(data, state_path)
+            state_path = _resolve_state_path_for_record(args)
+            from_drive, to_drive = _resolve_record_drive_flags(args)
+            result = run_record_results(
+                data,
+                state_path,
+                from_drive=from_drive,
+                to_drive=to_drive,
+            )
             print(
                 f"OK: {result['date']} の結果を{result['completed']}レース分追記しました: {result['path']}"
             )
         return 0
-    except (ValidationError, RuntimeError, OSError, json.JSONDecodeError) as exc:
+    except (
+        ValidationError,
+        RuntimeError,
+        OSError,
+        json.JSONDecodeError,
+        drive_state.DriveStateError,
+    ) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 1
 
