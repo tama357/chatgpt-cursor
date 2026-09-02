@@ -39,6 +39,15 @@ from keirin_learning_json import (
     save_results_inbox,
 )
 from keirin_score import extract_candidates, score_candidate
+from keirin_drive_inbox import (
+    DriveInboxError,
+    DriveInboxStore,
+    format_sync_note,
+    pull_completed_final,
+    pull_ready_input,
+    sync_completed_final,
+    sync_ready_input,
+)
 from keirin_sheets import (
     SheetError,
     SheetStore,
@@ -105,12 +114,47 @@ def _candidates_for_state(candidates: list[dict[str, Any]]) -> list[dict[str, An
     return out
 
 
+def _sync_ready_input_note(
+    root: Path,
+    date: str,
+    *,
+    sync_drive: bool,
+    drive_store: DriveInboxStore | None,
+) -> str:
+    if not sync_drive:
+        return "Drive同期はスキップしました。"
+    try:
+        result = sync_ready_input(root, date, store=drive_store)
+        return format_sync_note(result)
+    except DriveInboxError as exc:
+        return f"Drive未同期: {exc} ローカル正式名は作成済みです。"
+
+
+def _sync_completed_final_note(
+    root: Path,
+    date: str,
+    *,
+    sync_drive: bool,
+    drive_store: DriveInboxStore | None,
+    payload: dict[str, Any],
+) -> str:
+    if not sync_drive:
+        return "Drive同期はスキップしました。"
+    try:
+        result = sync_completed_final(root, date, store=drive_store, payload=payload)
+        return format_sync_note(result)
+    except DriveInboxError as exc:
+        return f"Drive未同期: {exc} 最終予想の内容は補正していません。"
+
+
 def prepare_today(
     root: Path,
     date: str | None = None,
     *,
     races_file: Path | None = None,
     get_json: Callable[..., dict[str, Any]] | None = None,
+    sync_drive: bool = False,
+    drive_store: DriveInboxStore | None = None,
 ) -> str:
     date = date or today_str()
     rules = load_rules(root)
@@ -165,6 +209,7 @@ def prepare_today(
         f"{chatgpt_input_readiness_message(root, date)}\n"
         f"この正式名（{formal.name}）だけをChatGPTに渡してください。"
         f" {tmp.name} は作成途中なので渡さないでください。\n"
+        f"{_sync_ready_input_note(root, date, sync_drive=sync_drive, drive_store=drive_store)}\n"
         f"最終3Rと買い目は作っていません。\n"
         f"最終予想JSONが来るまで提出・シート転記・Chatworkは行いません。"
     )
@@ -210,9 +255,21 @@ def ingest_final(
     confirm_send: bool = False,
     send_fn: Callable[[dict[str, Any]], Any] | None = None,
     record_fn: Callable[..., Any] | None = None,
+    sync_drive: bool = False,
+    drive_store: DriveInboxStore | None = None,
 ) -> str:
     date = date or today_str()
+    if sync_drive and not is_chatgpt_input_ready(root, date):
+        try:
+            pull_ready_input(root, date, store=drive_store)
+        except DriveInboxError:
+            pass
     raw = find_final_prediction(root, date, json_file=final_file)
+    if raw is None and sync_drive and final_file is None:
+        try:
+            raw = pull_completed_final(root, date, store=drive_store)
+        except (DriveInboxError, SchemaError):
+            raw = None
     try:
         final_data = require_chatgpt_final(raw)
     except SchemaError as exc:
@@ -240,8 +297,19 @@ def ingest_final(
 
     if final_file:
         save_json(chatgpt_final_path(root, date), final_data)
+    elif not chatgpt_final_path(root, date).is_file():
+        save_json(chatgpt_final_path(root, date), final_data)
 
     notes = ["ChatGPT最終予想を受け取りました。Cursorは内容を改変していません。"]
+    notes.append(
+        _sync_completed_final_note(
+            root,
+            date,
+            sync_drive=sync_drive,
+            drive_store=drive_store,
+            payload=final_data,
+        )
+    )
 
     if write_sheets:
         if sub["sheet_written"]:
@@ -488,7 +556,14 @@ def run_today_or_stop(
 ) -> str:
     """旧『今日の予想を実行して』互換。最終予想が無ければ収集だけで止める。"""
     date = date or today_str()
-    prepared = prepare_today(root, date, races_file=kwargs.get("races_file"), get_json=kwargs.get("get_json"))
+    prepared = prepare_today(
+        root,
+        date,
+        races_file=kwargs.get("races_file"),
+        get_json=kwargs.get("get_json"),
+        sync_drive=kwargs.get("sync_drive", False),
+        drive_store=kwargs.get("drive_store"),
+    )
     raw = find_final_prediction(root, date, json_file=kwargs.get("final_file"))
     if missing_stop(raw):
         return prepared + "\n\n" + STOP_NO_FINAL
@@ -500,6 +575,8 @@ def run_today_or_stop(
         write_sheets=kwargs.get("write_sheets", True),
         confirm_send=kwargs.get("confirm_send", False),
         send_fn=kwargs.get("send_fn"),
+        sync_drive=kwargs.get("sync_drive", False),
+        drive_store=kwargs.get("drive_store"),
     )
     return prepared + "\n\n" + ingested
 

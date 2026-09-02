@@ -14,10 +14,11 @@ Cursorはデータ収集・整理・記録・集計・検証だけを行う。
 JSON作成とコマンド実行は Cursor が行う。原田さんにコマンド入力はさせない。
 
 1. Cursorが候補5〜10Rの入力JSONを作る
-2. **正式名** `prediction_input_YYYY-MM-DD.json` だけを ChatGPT に渡す（`.tmp.json` は未完成）
-3. ChatGPTが最終予想JSONを返す
-4. そのJSONを Cursor に渡し、「取り込んで」と伝える
-5. 最終予想が揃って初めて、既存シートへ転記する
+2. 完成したら `prediction_input_YYYY-MM-DD.json` を `マイドライブ / ChatGPT / 競輪学習 / inbox` へ同期する（`.tmp.json` は出さない）
+3. ChatGPTはDrive上の正式名だけを読む
+4. ChatGPTが完成した `prediction_final_YYYY-MM-DD.json` を同じinboxへ置く
+5. Cursorがそれを取り込み、機械検証のあと同じ正式名をDriveへ同期する
+6. 最終予想が揃って初めて、既存シートへ転記する
 
 ## 正本の優先順位
 
@@ -64,8 +65,9 @@ Chatwork送信は明示トリガーと `--confirm-send` がある場合に限り
 2. keirin.jp から開催場、レース番号、締切時刻、出走選手、脚質、級班、直近成績、今場所・前場所、欠場フラグ、オッズ（取れる場合）を集める。取れない項目は null と risk_factors に残す。
 3. 締切18:00以降を `prediction_score` で並べ、5〜10レースを候補にする。最終3Rは決めない。
 4. 作成途中は `data/inbox/prediction_input_YYYY-MM-DD.tmp.json` に書く。全データ取得・検証が終わり、重要情報が揃ってから、原子的な rename で `prediction_input_YYYY-MM-DD.json` へ切り替える。失敗時に正式名の半端ファイルは残さない。
-5. 正式名があり `status=ready` かつ `data_complete=true` のときだけ、ChatGPTが処理してよい。tmp だけ残っている日は未完成。
-6. ここで停止する。買い目もシートもChatworkも触らない。
+5. 正式名があり `status=ready` かつ `data_complete=true` のときだけ、同じファイルを `マイドライブ / ChatGPT / 競輪学習 / inbox` へ同期する。`.tmp.json` はDriveへ出さない。
+6. 正式名があり `status=ready` かつ `data_complete=true` のときだけ、ChatGPTが処理してよい。tmp だけ残っている日は未完成。
+7. ここで停止する。買い目もシートもChatworkも触らない。
 
 ```bash
 python3 競輪予想/tools/keirin_workflow.py prepare-today
@@ -94,12 +96,12 @@ python3 競輪予想/tools/keirin_workflow.py prepare-today
 - current_meeting_results, previous_meeting_results
 - odds, risk_factors, source
 
-原田さんが ChatGPT に渡すとき:
+ChatGPTが読むファイル:
 
-1. Cursorが作った **正式名** `prediction_input_YYYY-MM-DD.json` だけを添付する
-2. `prediction_input_YYYY-MM-DD.tmp.json` は作成途中なので渡さない
-3. 「この候補データだけで、今日の最終3レースと買い目をJSONで返して」と伝える
-4. 返ってきたJSONを `prediction_final_YYYY-MM-DD.json` として Cursor に渡す
+1. Driveの `競輪学習 / inbox` にある **正式名** `prediction_input_YYYY-MM-DD.json` だけ
+2. `prediction_input_YYYY-MM-DD.tmp.json` は作成途中なので読まない。Driveにも置かない
+3. 完成した最終予想だけを同じinboxへ `prediction_final_YYYY-MM-DD.json` として書く
+4. 手元にJSONがある場合は、同じ正式名で Cursor に渡してもよい
 
 受け取り形式は `examples/chatgpt_final.example.json`。
 
@@ -109,8 +111,9 @@ python3 競輪予想/tools/keirin_workflow.py prepare-today
 python3 競輪予想/tools/keirin_workflow.py ingest-final 競輪予想/data/inbox/prediction_final_YYYY-MM-DD.json
 ```
 
+0. ローカルに最終予想が無ければ、Drive inbox の完成済み `prediction_final_YYYY-MM-DD.json` を取得する。未完成なら取り込まない。
 1. 必須項目を確認する。欠けていれば停止する。Cursorはレース・軸・買い目・点数・解説を再予想・修正しない。
-2. 機械的検証だけ行う。エラー時は自動修正せず停止し、失敗内容を日本語で返す。
+2. 機械的検証だけ行う。エラー時は自動修正せず停止し、失敗内容を日本語で返す。Driveへは完成版だけ同期する。検証エラー時は同期しない。
    - 対象日一致
    - 締切18:00以降
    - 3R以内
@@ -125,6 +128,17 @@ python3 競輪予想/tools/keirin_workflow.py ingest-final 競輪予想/data/inb
 7. 同じ日付の最終予想を再読しても、シートとChatworkは二重送信しない。内部状態（`data/state/submission_state_YYYY-MM-DD.json` の `sheet_written` / `chatwork_sent` / `processed_at`）だけで管理する。既存シートの列・行・見出しは変えない。処理済みならその旨を日本語で伝える。部分成功（シートだけ書いた／Chatworkだけ失敗）は、成功側は再送せず失敗側だけ再実行する。シートへの二重書き込みはしない。
 
 タブがなければ「テンプレ」を複製し `YYYY/MM/DD` に改名してから記入する。列・行・見出し・数式・書式は変えない。
+
+## Drive同期（完成済み当日JSONのみ）
+
+保存先：マイドライブ / ChatGPT / 競輪学習 / inbox
+
+- 出すのは `prediction_input_YYYY-MM-DD.json` と `prediction_final_YYYY-MM-DD.json` だけ
+- `.tmp.json` はDriveへ出さない
+- input は `status="ready"` かつ `data_complete=true` のときだけ
+- final はChatGPTが作った完成版だけ。検証エラー時は同期しない
+- 既存の学習用 `YYYY-MM-DD.*.json`、シート、`keirin_learning_state.json` の構造は変えない
+- ファイルIDはGitへ書かない。同名があれば更新し、重複作成しない
 
 ## 既存シートを触らない（絶対）
 
@@ -173,11 +187,15 @@ python3 競輪予想/tools/keirin_workflow.py results-yesterday
 
 保存先：マイドライブ / ChatGPT / 競輪学習 / inbox
 
-- 候補入力（完成）：`prediction_input_YYYY-MM-DD.json`
-- 候補入力（作成途中）：`prediction_input_YYYY-MM-DD.tmp.json`
-- 最終予想：`prediction_final_YYYY-MM-DD.json`
+- 候補入力（完成・Drive同期する）：`prediction_input_YYYY-MM-DD.json`
+- 候補入力（作成途中・ローカルのみ）：`prediction_input_YYYY-MM-DD.tmp.json`
+- 最終予想（ChatGPT完成版のみDrive同期）：`prediction_final_YYYY-MM-DD.json`
 - 6:00相当：`YYYY-MM-DD.predictions.json`
 - 4:00相当：`YYYY-MM-DD.results.json` / `YYYY-MM-DD.learning.json`
+
+`prediction_input` は `status=ready` かつ `data_complete=true` のときだけDriveへ出す。
+学習用の `YYYY-MM-DD.*.json` と `keirin_learning_state.json` の構造は変えない。
+`sheet_written` / `chatwork_sent` は内部stateのまま。シートに管理列は足さない。
 
 競輪スプレッドシートとは別ファイル。シートの列・数式・書式・構造は変更しない。学習JSONはSheetsとChatworkに出さない。
 

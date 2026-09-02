@@ -11,4 +11,6 @@ ChatGPTに渡してよいのは、完成済みの正式名だけです。
 - 最終予想例: `chatgpt_final.example.json`
 - 収集テスト用: `races_collect.example.json`
 
-`.tmp.json` だけがある日は未完成です。ChatGPTには渡さないでください。
+`.tmp.json` だけがある日は未完成です。ChatGPTには渡さないでください。Driveにも置きません。
+
+完成済みの正式名だけを `マイドライブ / ChatGPT / 競輪学習 / inbox` へ同期します。

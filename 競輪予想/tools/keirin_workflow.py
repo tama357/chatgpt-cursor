@@ -1147,6 +1147,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     prepare.add_argument("--date", help="対象日 YYYY-MM-DD（省略時は今日・JST）")
     prepare.add_argument("--races-file", type=Path, help="ネット無し検証用のレースJSON")
+    prepare.add_argument(
+        "--skip-drive",
+        action="store_true",
+        help="完成済みinputのDrive同期をしない（ローカル検証用）",
+    )
     ingest = subparsers.add_parser(
         "ingest-final",
         help="ChatGPT最終予想を取り込む。無ければ停止し、Cursorは予想しない",
@@ -1154,10 +1159,15 @@ def build_parser() -> argparse.ArgumentParser:
     ingest.add_argument(
         "json_file",
         nargs="?",
-        help="最終予想JSON。省略時は data/inbox/prediction_final_日付.json",
+        help="最終予想JSON。省略時は data/inbox/prediction_final_日付.json またはDrive",
     )
     ingest.add_argument("--date", help="対象日 YYYY-MM-DD（省略時は今日・JST）")
     ingest.add_argument("--skip-sheets", action="store_true", help="シート転記をせずJSONとガードだけ検証")
+    ingest.add_argument(
+        "--skip-drive",
+        action="store_true",
+        help="完成済みfinalのDrive同期・取得をしない（ローカル検証用）",
+    )
     ingest.add_argument(
         "--confirm-send",
         action="store_true",
@@ -1179,6 +1189,7 @@ def build_parser() -> argparse.ArgumentParser:
     today.add_argument("json_file", nargs="?", help="あればChatGPT最終予想として取り込む")
     today.add_argument("--skip-sheets", action="store_true")
     today.add_argument("--confirm-send", action="store_true")
+    today.add_argument("--skip-drive", action="store_true")
     return parser
 
 
@@ -1214,6 +1225,7 @@ def _run_cursor_command(args: argparse.Namespace) -> str:
             root,
             args.date,
             races_file=getattr(args, "races_file", None),
+            sync_drive=not getattr(args, "skip_drive", False),
         )
     if args.command == "ingest-final":
         final_file = Path(args.json_file) if getattr(args, "json_file", None) else None
@@ -1234,6 +1246,7 @@ def _run_cursor_command(args: argparse.Namespace) -> str:
             write_sheets=not args.skip_sheets,
             confirm_send=args.confirm_send,
             send_fn=send_fn,
+            sync_drive=not getattr(args, "skip_drive", False),
         )
     if args.command == "results-yesterday":
         return flow.process_results(
@@ -1250,6 +1263,7 @@ def _run_cursor_command(args: argparse.Namespace) -> str:
             final_file=Path(args.json_file) if getattr(args, "json_file", None) else None,
             write_sheets=not getattr(args, "skip_sheets", False),
             confirm_send=bool(getattr(args, "confirm_send", False)),
+            sync_drive=not getattr(args, "skip_drive", False),
         )
     raise ValidationError(f"未対応のコマンドです: {args.command}")
 

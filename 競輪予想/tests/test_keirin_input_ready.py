@@ -117,7 +117,7 @@ class KeirinInputReadyTest(unittest.TestCase):
 
     def test_prepare_today_writes_formal_ready_file(self):
         races = self._copy_example("races_collect.example.json")
-        text = flow.prepare_today(self.root, "2099-01-01", races_file=races)
+        text = flow.prepare_today(self.root, "2099-01-01", races_file=races, sync_drive=False)
         self.assertIn("データ準備完了", text)
         self.assertIn("prediction_input_2099-01-01.json", text)
         self.assertIn("ChatGPT処理可能", text)

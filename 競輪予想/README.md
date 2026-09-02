@@ -13,11 +13,11 @@ Cursorは開催データの収集・候補抽出・記録・検証だけを行�
 
 ### ChatGPTに渡す手順
 
-1. Cursorが完成したら `競輪予想/data/inbox/prediction_input_YYYY-MM-DD.json` を作る（途中は `.tmp.json`）
-2. **正式名だけ**を ChatGPT に添付する。`.tmp.json` は渡さない
-3. 「この候補データだけで、今日の最終3レースと買い目をJSONで返して」と伝える
-4. 返ってきたJSONを `prediction_final_YYYY-MM-DD.json` として Cursor に渡す
-5. 必須項目（選定3レース・狙い・confidence・本線・抑え・合計点数・解説）が揃い、機械的検証を通ったときだけ転記する。検証エラーは直さず停止する
+1. Cursorが完成したら `prediction_input_YYYY-MM-DD.json` を作る（途中は `.tmp.json`）
+2. 完成済み（`status=ready` かつ `data_complete=true`）だけを `マイドライブ / ChatGPT / 競輪学習 / inbox` へ同期する。`.tmp.json` はDriveへ出さない
+3. ChatGPTはDrive上の正式名だけを読む
+4. ChatGPTの完成版 `prediction_final_YYYY-MM-DD.json` を同じinboxへ置く。Cursorは内容を補正しない
+5. 必須項目（選定3レース・狙い・confidence・本線・抑え・合計点数・解説）が揃い、機械的検証を通ったときだけ転記する。検証エラーは直さず停止し、Driveにも出さない
 
 入力例: `examples/chatgpt_input.example.json`  
 最終予想例: `examples/chatgpt_final.example.json`
@@ -45,6 +45,7 @@ Cursorは開催データの収集・候補抽出・記録・検証だけを行�
 - `tools/keirin_workflow.py`：検証、state、Chatwork、当日フローの入口
 - `tools/keirin_cursor_flow.py`：収集・候補抽出・最終予想取り込み・結果
 - `tools/keirin_sheets.py`：指定セルへの値転記と再読。列追加はしない
+- `tools/keirin_drive_inbox.py`：完成済み当日JSONだけを競輪学習inboxへ同期。tmpと学習stateは出さない
 - `tests/test_keirin_role_split.py`：役割分担とガードのテスト
 
 ## 既存シート

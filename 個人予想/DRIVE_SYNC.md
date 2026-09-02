@@ -4,7 +4,7 @@
 
 日次の学習正本は Excel とは別に、各競技の **inbox 日次JSON** です。正規state（`jra_state.json` 等）は日次ジョブから更新しません。
 
-提出用競輪の `マイドライブ / ChatGPT / 競輪学習 / inbox` は変更しません。
+提出用競輪の `マイドライブ / ChatGPT / 競輪学習 / inbox` は、個人予想ジョブからは変更しません。提出用競輪側が完成済みの `prediction_input_YYYY-MM-DD.json` / `prediction_final_YYYY-MM-DD.json` を置くことがあります。
 
 ## 対象Excel（ID指定・新規作成しない）
 
