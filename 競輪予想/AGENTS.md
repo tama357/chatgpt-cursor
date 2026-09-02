@@ -98,6 +98,17 @@ ChatGPT Workの定期実行は毎回ローカル `state/state.json` が空にな
 - ファイルIDが無い、取得に失敗、壊れたJSON、保存失敗のいずれかなら終了する。Sheets更新とChatwork送信には進まない
 - ローカル検証だけするときは `--state /tmp/keirin-state.json` を使い、Driveフラグは付けない
 
+### 誤ファイル上書き防止（GET/PATCH前の必須検証）
+
+`KEIRIN_STATE_DRIVE_FILE_ID` の設定ミスで、競輪スプレッドシートや別ファイルを誤って上書きしないよう、`pull-state` / `push-state`（`record-predictions --drive` 等も含む）はDrive取得・保存の直前に必ず次を検証する。1つでも失敗したら中断し、後続のSheets記入・Chatwork送信には進まない。
+
+1. **ファイル名検証**：Drive上のファイル名が `keirin_learning_state.json` と一致すること
+2. **MIMEタイプ検証**：`application/json` または `text/plain` のいずれかであること
+3. **内容検証**：取得したJSONが `version: 1` と配列の `days` を持つ正規stateであること（既存の検証を維持）
+4. **空上書き防止**：ローカルstateに `days` が無い（空）のに、Drive側に既存の学習データがある場合はpushを中断する（学習データの消失防止）
+
+競輪学習専用のDrive state.jsonファイルは、Drive上で必ず `keirin_learning_state.json` という名前で保存すること。名前が異なると、コードが処理を止める。
+
 分割して実行する場合も、失敗したら次へ進まない。
 
 ```bash

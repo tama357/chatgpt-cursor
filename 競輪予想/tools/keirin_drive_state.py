@@ -27,12 +27,18 @@ DRIVE_SCOPE = "https://www.googleapis.com/auth/drive"
 
 EMPTY_STATE = {"version": 1, "days": []}
 
+EXPECTED_STATE_FILE_NAME = "keirin_learning_state.json"
+ALLOWED_STATE_MIME_TYPES = {"application/json", "text/plain"}
+
 
 class DriveStateError(RuntimeError):
     pass
 
 
 class DriveStateStore(Protocol):
+    def get_metadata(self, file_id: str) -> dict[str, Any]:
+        """既存ファイルの名前・MIMEタイプ等を返す。無いIDは作らず失敗する。"""
+
     def download(self, file_id: str) -> bytes:
         """既存ファイルの中身を返す。無いIDは作らず失敗する。"""
 
@@ -123,12 +129,33 @@ def get_access_token(access_token: str | None = None) -> str:
 
 
 class MemoryDriveStateStore:
-    """テスト用。あらかじめ登録した既存IDだけを上書きする。新規IDは作らない。"""
+    """テスト用。あらかじめ登録した既存IDだけを上書きする。新規IDは作らない。
 
-    def __init__(self, files: dict[str, bytes] | None = None) -> None:
+    metadata を指定しない登録ファイルは、想定どおりの学習専用state.json
+    （name=EXPECTED_STATE_FILE_NAME, mimeType=application/json）として扱う。
+    誤ファイル判定のテストでは metadata を明示的に上書きする。
+    """
+
+    def __init__(
+        self,
+        files: dict[str, bytes] | None = None,
+        metadata: dict[str, dict[str, str]] | None = None,
+    ) -> None:
         self.files: dict[str, bytes] = dict(files or {})
+        self.metadata: dict[str, dict[str, str]] = dict(metadata or {})
         self.download_calls: list[str] = []
         self.upload_calls: list[str] = []
+        self.metadata_calls: list[str] = []
+
+    def get_metadata(self, file_id: str) -> dict[str, Any]:
+        file_id = require_state_file_id(file_id)
+        self.metadata_calls.append(file_id)
+        if file_id not in self.files:
+            raise DriveStateError(
+                f"Drive file ID が存在しません。新規作成しません: {file_id}"
+            )
+        default = {"name": EXPECTED_STATE_FILE_NAME, "mimeType": JSON_MIME}
+        return dict(self.metadata.get(file_id, default))
 
     def download(self, file_id: str) -> bytes:
         file_id = require_state_file_id(file_id)
@@ -160,6 +187,23 @@ class GoogleDriveStateStore:
 
     def _token(self) -> str:
         return get_access_token(self._access_token)
+
+    def get_metadata(self, file_id: str) -> dict[str, Any]:
+        file_id = require_state_file_id(file_id)
+        quoted = urllib.parse.quote(file_id, safe="")
+        fields = urllib.parse.quote("name,mimeType", safe="")
+        url = f"{DRIVE_API_BASE}/{quoted}?fields={fields}&supportsAllDrives=true"
+        status, raw = _http_request(
+            url, headers={"Authorization": f"Bearer {self._token()}"}
+        )
+        if status != 200:
+            raise DriveStateError(
+                f"Drive メタデータ取得失敗 HTTP {status}: {raw.decode('utf-8', errors='replace')}"
+            )
+        try:
+            return _parse_json(raw)
+        except json.JSONDecodeError as exc:
+            raise DriveStateError("Drive メタデータ応答がJSONではありません") from exc
 
     def download(self, file_id: str) -> bytes:
         file_id = require_state_file_id(file_id)
@@ -206,6 +250,42 @@ class GoogleDriveStateStore:
 
 def default_drive_store() -> DriveStateStore:
     return GoogleDriveStateStore()
+
+
+def verify_state_file_metadata(store: "DriveStateStore", file_id: str) -> dict[str, Any]:
+    """GET/PATCH前に必ず呼ぶ。ファイル名・MIMEタイプが想定外なら中断する。
+
+    KEIRIN_STATE_DRIVE_FILE_ID の設定ミスで競輪スプレッドシートや別ファイルを
+    誤って上書きしないための事前チェック。中身の検証はここでは行わない。
+    """
+    file_id = require_state_file_id(file_id)
+    metadata = store.get_metadata(file_id)
+    name = metadata.get("name")
+    mime = metadata.get("mimeType")
+    if name != EXPECTED_STATE_FILE_NAME:
+        raise DriveStateError(
+            "Drive上のファイル名が想定と異なるため中断しました"
+            f"（期待: {EXPECTED_STATE_FILE_NAME} / 実際: {name}）。"
+            "KEIRIN_STATE_DRIVE_FILE_ID の設定を確認してください。"
+        )
+    if mime not in ALLOWED_STATE_MIME_TYPES:
+        raise DriveStateError(
+            "Drive上のMIMEタイプが許可されていないため中断しました"
+            f"（実際: {mime} / 許可: {sorted(ALLOWED_STATE_MIME_TYPES)}）。"
+            "KEIRIN_STATE_DRIVE_FILE_ID の設定を確認してください。"
+        )
+    return metadata
+
+
+def guard_against_destructive_overwrite(
+    local_data: dict[str, Any], remote_data: dict[str, Any]
+) -> None:
+    """空のローカルstateで、既存Drive上の学習データを空に上書きしない安全策。"""
+    if not local_data.get("days") and remote_data.get("days"):
+        raise DriveStateError(
+            "ローカルstateにdaysがありませんが、Drive上には既存の学習データがあります。"
+            "空内容での上書きは危険なため中止しました。"
+        )
 
 
 def encode_state_bytes(data: dict[str, Any]) -> bytes:

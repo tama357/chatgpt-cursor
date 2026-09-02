@@ -352,5 +352,161 @@ class KeirinStateDrivePersistTest(unittest.TestCase):
             self.assertTrue(state_path.exists())
 
 
+class KeirinStateDriveMetadataSafetyTest(unittest.TestCase):
+    """KEIRIN_STATE_DRIVE_FILE_ID の誤設定で別ファイルを壊さないための安全策。"""
+
+    def setUp(self):
+        self.day = _load_day()
+        self.results = _load_results()
+
+    def test_wrong_file_name_blocks_pull_without_download(self):
+        store = drive_mod.MemoryDriveStateStore(
+            {FILE_ID: b'{"version": 1, "days": []}\n'},
+            metadata={FILE_ID: {"name": "unrelated_file.json", "mimeType": "application/json"}},
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaises(drive_mod.DriveStateError):
+                workflow.pull_state(Path(tmp) / "state.json", store=store, file_id=FILE_ID)
+        self.assertEqual(store.download_calls, [])
+
+    def test_wrong_mime_type_blocks_pull_without_download(self):
+        store = drive_mod.MemoryDriveStateStore(
+            {FILE_ID: b'{"version": 1, "days": []}\n'},
+            metadata={
+                FILE_ID: {
+                    "name": drive_mod.EXPECTED_STATE_FILE_NAME,
+                    "mimeType": "application/vnd.google-apps.spreadsheet",
+                }
+            },
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaises(drive_mod.DriveStateError):
+                workflow.pull_state(Path(tmp) / "state.json", store=store, file_id=FILE_ID)
+        self.assertEqual(store.download_calls, [])
+
+    def test_wrong_file_name_blocks_push_without_upload(self):
+        store = drive_mod.MemoryDriveStateStore(
+            {FILE_ID: b'{"version": 1, "days": []}\n'},
+            metadata={FILE_ID: {"name": "keirin_spreadsheet.xlsx", "mimeType": "application/json"}},
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaises(drive_mod.DriveStateError):
+                workflow.push_state(Path(tmp) / "state.json", store=store, file_id=FILE_ID)
+        self.assertEqual(store.upload_calls, [])
+        self.assertEqual(store.download_calls, [])
+
+    def test_wrong_mime_type_blocks_push_without_upload(self):
+        store = drive_mod.MemoryDriveStateStore(
+            {FILE_ID: b'{"version": 1, "days": []}\n'},
+            metadata={
+                FILE_ID: {"name": drive_mod.EXPECTED_STATE_FILE_NAME, "mimeType": "image/png"}
+            },
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaises(drive_mod.DriveStateError):
+                workflow.push_state(Path(tmp) / "state.json", store=store, file_id=FILE_ID)
+        self.assertEqual(store.upload_calls, [])
+
+    def test_correct_name_and_mime_allow_pull_and_push(self):
+        store = drive_mod.MemoryDriveStateStore(
+            {FILE_ID: b'{"version": 1, "days": []}\n'},
+            metadata={
+                FILE_ID: {"name": drive_mod.EXPECTED_STATE_FILE_NAME, "mimeType": "text/plain"}
+            },
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            state_path = Path(tmp) / "state.json"
+            workflow.pull_state(state_path, store=store, file_id=FILE_ID)
+            self.assertTrue(state_path.exists())
+            workflow.push_state(state_path, store=store, file_id=FILE_ID)
+        self.assertEqual(store.upload_calls, [FILE_ID])
+
+    def test_push_rejects_invalid_remote_content_even_with_correct_metadata(self):
+        store = drive_mod.MemoryDriveStateStore(
+            {FILE_ID: b'{"version": 1, "days": "not-a-list"}'},
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            state_path = Path(tmp) / "state.json"
+            with self.assertRaises(drive_mod.DriveStateError):
+                workflow.push_state(state_path, store=store, file_id=FILE_ID)
+        self.assertEqual(store.upload_calls, [])
+        self.assertEqual(store.files[FILE_ID], b'{"version": 1, "days": "not-a-list"}')
+
+    def test_push_refuses_to_clear_remote_with_empty_local_state(self):
+        with tempfile.TemporaryDirectory() as seed_tmp:
+            seed_path = Path(seed_tmp) / "state.json"
+            workflow.record_predictions(self.day, seed_path)
+            remote_with_history = seed_path.read_bytes()
+
+        store = drive_mod.MemoryDriveStateStore({FILE_ID: remote_with_history})
+        with tempfile.TemporaryDirectory() as tmp:
+            empty_state_path = Path(tmp) / "state.json"
+            self.assertFalse(empty_state_path.exists())
+            with self.assertRaises(drive_mod.DriveStateError):
+                workflow.push_state(empty_state_path, store=store, file_id=FILE_ID)
+        self.assertEqual(store.upload_calls, [])
+        self.assertEqual(store.files[FILE_ID], remote_with_history)
+
+    def test_metadata_mismatch_stops_sheets_and_chatwork_on_predict(self):
+        store = drive_mod.MemoryDriveStateStore(
+            {FILE_ID: b'{"version": 1, "days": []}\n'},
+            metadata={FILE_ID: {"name": "wrong.json", "mimeType": "application/json"}},
+        )
+        sheets_hook = mock.Mock()
+        chatwork_hook = mock.Mock()
+        with tempfile.TemporaryDirectory() as tmp:
+            state_path = Path(tmp) / "state.json"
+            with mock.patch.object(workflow, "format_predictions") as fmt:
+                with mock.patch.object(workflow, "send_chatwork") as send:
+                    with self.assertRaises(drive_mod.DriveStateError):
+                        workflow.run_record_predictions(
+                            self.day,
+                            state_path,
+                            from_drive=True,
+                            to_drive=True,
+                            drive_store=store,
+                            drive_file_id=FILE_ID,
+                            sheets_hook=sheets_hook,
+                            chatwork_hook=chatwork_hook,
+                        )
+                    fmt.assert_not_called()
+                    send.assert_not_called()
+            self.assertFalse(state_path.exists())
+        sheets_hook.assert_not_called()
+        chatwork_hook.assert_not_called()
+
+    def test_metadata_mismatch_stops_sheets_on_results(self):
+        store = drive_mod.MemoryDriveStateStore(
+            {FILE_ID: b'{"version": 1, "days": []}\n'},
+            metadata={FILE_ID: {"name": drive_mod.EXPECTED_STATE_FILE_NAME, "mimeType": "text/csv"}},
+        )
+        sheets_hook = mock.Mock()
+        with tempfile.TemporaryDirectory() as tmp:
+            state_path = Path(tmp) / "state.json"
+            with self.assertRaises(drive_mod.DriveStateError):
+                workflow.run_record_results(
+                    self.results,
+                    state_path,
+                    from_drive=True,
+                    to_drive=True,
+                    drive_store=store,
+                    drive_file_id=FILE_ID,
+                    sheets_hook=sheets_hook,
+                )
+        sheets_hook.assert_not_called()
+
+    def test_google_store_get_metadata_uses_file_id_and_fields(self):
+        store = drive_mod.GoogleDriveStateStore(access_token="fake-token")
+        payload = b'{"name": "keirin_learning_state.json", "mimeType": "application/json"}'
+        with mock.patch.object(drive_mod, "_http_request", return_value=(200, payload)) as http:
+            metadata = store.get_metadata(FILE_ID)
+        self.assertEqual(metadata["name"], "keirin_learning_state.json")
+        self.assertEqual(metadata["mimeType"], "application/json")
+        url = http.call_args.args[0]
+        self.assertIn(FILE_ID, url)
+        self.assertIn("fields=", url)
+        self.assertNotIn("alt=media", url)
+
+
 if __name__ == "__main__":
     unittest.main()
