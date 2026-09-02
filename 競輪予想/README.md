@@ -37,17 +37,19 @@ Cursor側に実行コードが保存されていなかったため、ChatGPTか�
 
 - `AGENTS.md`：ChatGPTが守る実行順序、シート範囲、送信ルール
 - `current_rules.json`：機械可読な最新条件
-- `examples/predictions.example.json`：予想入力例（架空データ）
+- `examples/predictions.example.json`：Chatwork本文用の予想入力例（架空データ）
+- `examples/day_predictions.example.json`：6:00のstate保存用入力例（スコア・候補付き、架空データ）
 - `examples/results.example.json`：結果入力例（架空データ）
-- `tools/keirin_workflow.py`：買い目検証、本文生成、Chatwork送信
-- `tests/test_keirin_workflow.py`：点数計算・形式・的中判定のテスト
+- `tools/keirin_workflow.py`：買い目検証、内部stateのupsert、本文生成、Chatwork送信
+- `tests/test_keirin_workflow.py`：点数計算・形式・的中判定・Chatwork回帰のテスト
+- `tests/test_keirin_state_upsert.py`：state保存の単体テスト（一時ディレクトリのみ）
 - `state/state.example.json`：内部学習データの形式例（架空データ）
 
 ## 予想適性スコアと内部学習
 
 `prediction_score` はレースの予想しやすさ、`confidence` は作成した買い目への確信度として完全に分離する。締切18:00以降の全候補を100点満点で比較し、上位3レースを採用する。3位が70点未満でも3レースは作成し、内部stateへ `low_quality_day=true` を残す。
 
-4:00の結果検証ではハズレ原因を分類し、内部stateからlearning-reportを作る。レポートは初期配点を変更せず、`recommended_weights` として提案だけを出す。
+6:00は `record-predictions` が成功してからSheets記入とChatwork送信へ進む。4:00は `record-results` が成功してからSheets結果更新へ進む。`axis` は本線先頭から自動抽出し、`close_miss` は結果追記時に自動判定する。レポートは初期配点を変更せず、`recommended_weights` として提案だけを出す。
 
 実データの `state/*.json` はGit管理対象外であり、Google SheetsとChatworkにも出力しない。既存の鉄板／中穴／大穴、自信度、シート列、Chatwork本文は変更しない。
 
@@ -56,6 +58,8 @@ Cursor側に実行コードが保存されていなかったため、ChatGPTか�
 ```bash
 python3 競輪予想/tools/keirin_workflow.py validate-predictions 競輪予想/examples/predictions.example.json
 python3 競輪予想/tools/keirin_workflow.py format-predictions 競輪予想/examples/predictions.example.json
+python3 競輪予想/tools/keirin_workflow.py record-predictions 競輪予想/examples/day_predictions.example.json --state /tmp/keirin-state.json
+python3 競輪予想/tools/keirin_workflow.py record-results 競輪予想/examples/results.example.json --state /tmp/keirin-state.json
 python3 競輪予想/tools/keirin_workflow.py validate-state 競輪予想/state/state.example.json
 python3 競輪予想/tools/keirin_workflow.py build-learning-report 競輪予想/state/state.example.json
 python3 -m unittest discover -s 競輪予想/tests -v

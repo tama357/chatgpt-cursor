@@ -98,12 +98,19 @@
           "penalties": [{"code": "other", "points": 2}],
           "first_place_candidate_count": 1,
           "ticket_count": 5,
+          "axis": "1",
+          "tickets": [
+            {"type": "本線", "pick": "1-2-345"},
+            {"type": "抑え", "pick": "2-1-34"}
+          ],
           "result": {
             "status": "的中",
             "stake": 500,
             "payout": 720,
+            "trifecta": "1-2-3",
             "primary_miss_reason": null,
-            "secondary_miss_reasons": []
+            "secondary_miss_reasons": [],
+            "close_miss": false
           }
         },
         {
@@ -125,12 +132,19 @@
           "penalties": [{"code": "evenly_matched", "points": 3}],
           "first_place_candidate_count": 2,
           "ticket_count": 5,
+          "axis": "3",
+          "tickets": [
+            {"type": "本線", "pick": "3-4-125"},
+            {"type": "抑え", "pick": "4-3-12"}
+          ],
           "result": {
             "status": "ハズレ",
             "stake": 500,
             "payout": 0,
+            "trifecta": "7-2-1",
             "primary_miss_reason": "axis_miss",
-            "secondary_miss_reasons": ["line_collapse"]
+            "secondary_miss_reasons": ["line_collapse"],
+            "close_miss": false
           }
         },
         {
@@ -152,12 +166,19 @@
           "penalties": [{"code": "fragmented_race", "points": 3}],
           "first_place_candidate_count": 1,
           "ticket_count": 5,
+          "axis": "5",
+          "tickets": [
+            {"type": "本線", "pick": "5-6-123"},
+            {"type": "抑え", "pick": "6-5-12"}
+          ],
           "result": {
             "status": "的中",
             "stake": 500,
             "payout": 1240,
+            "trifecta": "5-6-1",
             "primary_miss_reason": null,
-            "secondary_miss_reasons": []
+            "secondary_miss_reasons": [],
+            "close_miss": false
           }
         }
       ]
