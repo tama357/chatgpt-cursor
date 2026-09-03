@@ -90,5 +90,12 @@ def mark_submission(
     return state
 
 
+def chatwork_sending_enabled() -> bool:
+    """個人運用では既定オフ。機能削除はせず、明示ONのときだけ送る。"""
+    return os.environ.get("CHATWORK_ENABLED", "").strip().lower() in {"1", "true", "yes", "on"}
+
+
 def already_fully_processed(state: dict[str, Any]) -> bool:
+    if not chatwork_sending_enabled():
+        return bool(state.get("sheet_written"))
     return bool(state.get("sheet_written")) and bool(state.get("chatwork_sent"))
