@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Any, Callable
 
@@ -117,6 +118,37 @@ def _candidates_for_state(candidates: list[dict[str, Any]]) -> list[dict[str, An
     return out
 
 
+def input_artifact_name(date: str) -> str:
+    return f"keirin-prediction-input-{date}"
+
+
+def emit_github_prepare_outputs(root: Path, date: str, ready: bool) -> None:
+    """GitHub Actions に Artifact 用の出力を渡す。未完成なら ready=false。"""
+    gh = os.environ.get("GITHUB_OUTPUT")
+    if not gh:
+        return
+    path = chatgpt_input_path(root, date)
+    try:
+        rel = path.resolve().relative_to(Path.cwd().resolve())
+        rel_text = rel.as_posix()
+    except ValueError:
+        rel_text = str(path)
+    with open(gh, "a", encoding="utf-8") as handle:
+        handle.write(f"date={date}\n")
+        handle.write(f"ready={'true' if ready else 'false'}\n")
+        handle.write(f"input_path={rel_text}\n")
+        handle.write(f"artifact_name={input_artifact_name(date)}\n")
+
+
+def _handoff_status_lines(*, ready: bool, artifact_note: str, drive_note: str) -> str:
+    created = "成功" if ready else "未完成"
+    return (
+        f"input JSON作成：{created}\n"
+        f"Artifact保存：{artifact_note}\n"
+        f"{drive_note}"
+    )
+
+
 def _sync_ready_input_note(
     root: Path,
     date: str,
@@ -125,12 +157,14 @@ def _sync_ready_input_note(
     drive_store: DriveInboxStore | None,
 ) -> str:
     if not sync_drive:
-        return "Drive同期はスキップしました。"
+        return "Drive同期：未使用"
     try:
         result = sync_ready_input(root, date, store=drive_store)
-        return format_sync_note(result)
-    except DriveInboxError as exc:
-        return f"Drive未同期: {exc} ローカル正式名は作成済みです。"
+    except Exception as exc:
+        return f"Drive同期：失敗（{exc}）"
+    if result:
+        return "Drive同期：成功"
+    return "Drive同期：未使用"
 
 
 def _sync_completed_final_note(
@@ -170,11 +204,13 @@ def prepare_today(
     if not races:
         payload = build_chatgpt_input(date=date, candidates=[], skipped=[], rules=rules)
         path = write_chatgpt_input(root, payload)
+        emit_github_prepare_outputs(root, date, ready=False)
         return (
             f"【収集結果】{date} の開催・出走を取得できませんでした（source={source}）。"
             f" 第一予想も最終予想も作っていません。"
             f" 正式ファイルは未作成です。ChatGPTには渡さないでください。"
-            f" 一時ファイル: {path}"
+            f" 一時ファイル: {path}\n"
+            f"{_handoff_status_lines(ready=False, artifact_note='未実施', drive_note='Drive同期：未使用')}"
         )
 
     selected, skipped = extract_candidates(races, rules, min_count=5, max_count=10)
@@ -206,6 +242,20 @@ def prepare_today(
         f"{first.get('shortfall_reason') or '3Rまで作成済み。'}"
         "これは最終予想ではありません。"
     )
+    emit_github_prepare_outputs(root, date, ready=ready)
+    artifact_note = (
+        f"GitHub Actions Artifact（{input_artifact_name(date)}）へ渡します"
+        if ready and os.environ.get("GITHUB_OUTPUT")
+        else ("未実施（readyではない）" if not ready else "GitHub Actionsでのみ保存")
+    )
+    drive_note = (
+        _sync_ready_input_note(root, date, sync_drive=sync_drive, drive_store=drive_store)
+        if ready
+        else "Drive同期：未使用"
+    )
+    status_lines = _handoff_status_lines(
+        ready=ready, artifact_note=artifact_note, drive_note=drive_note
+    )
     if not ready:
         return (
             f"【データ未完成】{date} の候補を {len(selected)} レース抽出しましたが、"
@@ -215,7 +265,8 @@ def prepare_today(
             f"一時ファイル: {tmp}\n"
             f"{chatgpt_input_readiness_message(root, date)}\n"
             f"{first_note}\n"
-            f"シート転記とChatworkは行っていません。ChatGPTには渡さないでください。"
+            f"シート転記とChatworkは行っていません。ChatGPTには渡さないでください。\n"
+            f"{status_lines}"
         )
     return (
         f"【データ準備完了】{date} の候補を {len(selected)} レース抽出し、第一予想をinputへ入れました（{source}）。\n"
@@ -225,7 +276,7 @@ def prepare_today(
         f"{chatgpt_input_readiness_message(root, date)}\n"
         f"この正式名（{formal.name}）だけをChatGPTに渡してください。"
         f" {tmp.name} は作成途中なので渡さないでください。\n"
-        f"{_sync_ready_input_note(root, date, sync_drive=sync_drive, drive_store=drive_store)}\n"
+        f"{status_lines}\n"
         f"最終予想としては確定していません。prediction_finalは作っていません。\n"
         f"6:00時点ではシート転記もChatwork送信も行いません。"
     )

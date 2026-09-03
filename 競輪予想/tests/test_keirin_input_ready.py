@@ -1,9 +1,11 @@
 import importlib.util
 import json
+import os
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -265,6 +267,55 @@ class KeirinInputReadyTest(unittest.TestCase):
         self.assertEqual(calls, ["fail", "ok"])
         state = submission.load_submission_state(self.root, "2099-01-01")
         self.assertTrue(state["chatwork_sent"])
+
+    def test_ready_input_emits_github_artifact_outputs(self):
+        races = self._copy_example("races_collect.example.json")
+        with tempfile.NamedTemporaryFile("w+", encoding="utf-8", delete=False) as handle:
+            out_path = handle.name
+        try:
+            with mock.patch.dict(os.environ, {"GITHUB_OUTPUT": out_path}):
+                text = flow.prepare_today(
+                    self.root, "2099-01-01", races_file=races, sync_drive=False
+                )
+            self.assertIn("input JSON作成：成功", text)
+            self.assertIn("Drive同期：未使用", text)
+            self.assertNotIn("Drive同期：成功", text)
+            self.assertIn(flow.input_artifact_name("2099-01-01"), text)
+            output = Path(out_path).read_text(encoding="utf-8")
+            self.assertIn("ready=true", output)
+            self.assertIn("date=2099-01-01", output)
+            self.assertIn("artifact_name=keirin-prediction-input-2099-01-01", output)
+            self.assertIn("prediction_input_2099-01-01.json", output)
+            self.assertNotIn(".tmp.json", output)
+            data = json.loads(
+                chatgpt_io.chatgpt_input_path(self.root, "2099-01-01").read_text(encoding="utf-8")
+            )
+            self.assertEqual(data["status"], "ready")
+            self.assertTrue(data["data_complete"])
+            self.assertIn("candidates", data)
+            self.assertIn("cursor_first_prediction", data)
+            self.assertGreaterEqual(len(data["candidates"]), 5)
+            self.assertLessEqual(len(data["candidates"]), 10)
+        finally:
+            Path(out_path).unlink(missing_ok=True)
+
+    def test_incomplete_input_does_not_mark_artifact_ready(self):
+        empty = self.root / "empty_races.json"
+        empty.write_text("[]\n", encoding="utf-8")
+        with tempfile.NamedTemporaryFile("w+", encoding="utf-8", delete=False) as handle:
+            out_path = handle.name
+        try:
+            with mock.patch.dict(os.environ, {"GITHUB_OUTPUT": out_path}):
+                text = flow.prepare_today(
+                    self.root, "2099-01-02", races_file=empty, sync_drive=False
+                )
+            self.assertIn("input JSON作成：未完成", text)
+            self.assertIn("Artifact保存：未実施", text)
+            output = Path(out_path).read_text(encoding="utf-8")
+            self.assertIn("ready=false", output)
+            self.assertNotIn("ready=true", output)
+        finally:
+            Path(out_path).unlink(missing_ok=True)
 
 
 if __name__ == "__main__":

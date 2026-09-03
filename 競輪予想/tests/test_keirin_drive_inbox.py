@@ -4,6 +4,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -101,7 +102,9 @@ class KeirinDriveInboxTest(unittest.TestCase):
             sync_drive=True,
             drive_store=self.store,
         )
-        self.assertIn("Drive同期", text)
+        self.assertIn("Drive同期：成功", text)
+        self.assertIn("input JSON作成：成功", text)
+        self.assertNotIn("Drive同期：失敗", text)
         self.assertIn("prediction_input_2099-01-01.json", text)
         self.assertEqual(self.store.creates, ["prediction_input_2099-01-01.json"])
         self.assertFalse(any(name.endswith(".tmp.json") for name in self.store.creates))
@@ -117,7 +120,29 @@ class KeirinDriveInboxTest(unittest.TestCase):
             drive_store=broken_store,
         )
         self.assertIn("正式ファイルは未作成", empty)
+        self.assertIn("Drive同期：未使用", empty)
+        self.assertNotIn("Drive同期：成功", empty)
         self.assertEqual(broken_store.creates, [])
+
+    def test_drive_quota_failure_is_not_reported_as_success(self):
+        races = self._copy_example("races_collect.example.json")
+        with mock.patch.object(
+            flow,
+            "sync_ready_input",
+            side_effect=inbox.DriveInboxError("storageQuotaExceeded"),
+        ):
+            text = flow.prepare_today(
+                self.root,
+                "2099-01-01",
+                races_file=races,
+                sync_drive=True,
+                drive_store=self.store,
+            )
+        self.assertIn("input JSON作成：成功", text)
+        self.assertIn("Drive同期：失敗", text)
+        self.assertIn("storageQuotaExceeded", text)
+        self.assertNotIn("Drive同期：成功", text)
+        self.assertTrue(chatgpt_io.chatgpt_input_path(self.root, "2099-01-01").is_file())
 
     def test_incomplete_final_is_not_uploaded(self):
         payload = {"date": "2099-01-01", "predictions": []}

@@ -15,8 +15,8 @@ Cursorは開催データの収集・候補抽出・第一予想・記録・検�
 ### ChatGPTに渡す手順
 
 1. Cursorが完成したら `prediction_input_YYYY-MM-DD.json` を作る（候補全体＋第一予想。途中は `.tmp.json`）
-2. 完成済み（`status=ready` かつ `data_complete=true`）だけを `マイドライブ / ChatGPT / 競輪学習 / inbox` へ同期する。`.tmp.json` はDriveへ出さない
-3. ChatGPTはDrive上の正式名だけを読み、第一予想を最終確認・修正する
+2. 完成済み（`status=ready` かつ `data_complete=true`）だけを GitHub Actions Artifact `keirin-prediction-input-YYYY-MM-DD` へ保存する。中身は正式名のJSONだけ。`.tmp.json` は入れない
+3. ChatGPTはArtifact上の正式名を読み、第一予想を最終確認・修正する。Driveへのinput新規作成は当面使わない
 4. ChatGPTの完成版 `prediction_final_YYYY-MM-DD.json` を同じinboxへ置く。Cursorは内容を補正しない
 5. 必須項目（選定3レース・狙い・confidence・本線・抑え・合計点数・解説）が揃い、機械的検証を通ったときだけ転記する。検証エラーは直さず停止し、Driveにも出さない
 
@@ -30,7 +30,7 @@ Cursorは開催データの収集・候補抽出・第一予想・記録・検�
 - データ準備：毎朝6:00（日本時間）
 - 結果記載：対象レース終了後、標準は翌朝4:00（日本時間）
 
-自動実行は GitHub Actions です。`keirin-submit` が JST 4:00 結果と JST 6:00 データ収集＋第一予想。`keirin-ingest` が 7:30〜11:30 に Drive の final を確認し、あれば取込とChatwork送信。6:00 は最終確定・シート転記・Chatwork を行いません。
+自動実行は GitHub Actions です。`keirin-submit` が JST 4:00 結果と JST 6:00 データ収集＋第一予想。完成inputは Artifact `keirin-prediction-input-YYYY-MM-DD` でChatGPTへ渡す。`keirin-ingest` が 7:30〜11:30 に Drive の final を確認し、あれば取込とChatwork送信。6:00 は最終確定・シート転記・Chatwork を行いません。
 
 ## ファイル
 

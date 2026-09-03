@@ -1,8 +1,9 @@
-# 提出用競輪の新運用（Cursor＝データ、ChatGPT＝最終予想）
+# 提出用競輪の新運用（Cursor＝データ＋第一予想、ChatGPT＝最終予想）
 # cron は UTC。日本時間は通年 UTC+9（サマータイムなし）。
 #   19:00 UTC = 翌 04:00 JST（前日結果）
-#   21:00 UTC = 翌 06:00 JST（当日データ収集）
+#   21:00 UTC = 翌 06:00 JST（当日データ収集＋第一予想）
 # 個人予想の personal-predict.yml は変更しない。
+# ChatGPTへのinput受け渡しは GitHub Actions Artifact。Drive新規作成は当面使わない。
 name: keirin-submit
 
 on:
@@ -26,6 +27,7 @@ concurrency:
 
 permissions:
   contents: read
+  actions: write
   pull-requests: none
 
 jobs:
@@ -68,15 +70,23 @@ jobs:
         id: auth
         env:
           GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON }}
+          JOB: ${{ steps.decide.outputs.job }}
         run: |
           set -euo pipefail
           if [ -z "${GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON:-}" ]; then
             echo "present=false" >> "$GITHUB_OUTPUT"
             echo "Drive認証: 利用不可（Secret未設定）"
-            exit 1
+            if [ "$JOB" = "results-yesterday" ]; then
+              exit 1
+            fi
+            echo "prepare-today のinput受け渡しはArtifactのため、Driveなしでも継続します。"
+            exit 0
           fi
           echo "present=true" >> "$GITHUB_OUTPUT"
           echo "Drive認証: 予約環境で利用可能"
+          if [ "$JOB" = "prepare-today" ]; then
+            echo "input受け渡しはArtifactを正とする。Drive新規作成は当面使わない。"
+          fi
 
       - name: Results yesterday (JST 4:00)
         if: steps.decide.outputs.job == 'results-yesterday'
@@ -86,8 +96,32 @@ jobs:
         run: python3 競輪予想/tools/keirin_workflow.py results-yesterday
 
       - name: Prepare today (JST 6:00)
+        id: prepare
         if: steps.decide.outputs.job == 'prepare-today'
         env:
-          GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON }}
           TZ: Asia/Tokyo
-        run: python3 競輪予想/tools/keirin_workflow.py prepare-today
+        run: python3 競輪予想/tools/keirin_workflow.py prepare-today --skip-drive
+
+      - name: Upload ChatGPT input artifact
+        if: steps.decide.outputs.job == 'prepare-today' && steps.prepare.outputs.ready == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.prepare.outputs.artifact_name }}
+          path: ${{ steps.prepare.outputs.input_path }}
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Report ChatGPT handoff
+        if: steps.decide.outputs.job == 'prepare-today'
+        run: |
+          set -euo pipefail
+          if [ "${{ steps.prepare.outputs.ready }}" = "true" ]; then
+            echo "input JSON作成：成功"
+            echo "Artifact保存：成功"
+            echo "Artifact名: ${{ steps.prepare.outputs.artifact_name }}"
+            echo "Artifact内ファイル: prediction_input_${{ steps.prepare.outputs.date }}.json"
+          else
+            echo "input JSON作成：未完成"
+            echo "Artifact保存：未実施"
+          fi
+          echo "Drive同期：未使用"

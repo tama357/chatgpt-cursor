@@ -15,8 +15,8 @@ Cursorはデータ収集・候補抽出・第一予想・記録・検証を行�
 JSON作成とコマンド実行は Cursor が行う。原田さんにコマンド入力はさせない。
 
 1. Cursorが候補5〜10Rと第一予想を `prediction_input_YYYY-MM-DD.json` に入れる
-2. 完成したら同じ正式名を `マイドライブ / ChatGPT / 競輪学習 / inbox` へ同期する（`.tmp.json` は出さない）
-3. ChatGPTはDrive上の正式名だけを読み、第一予想を最終確認・修正する
+2. 完成したら（`status=ready` かつ `data_complete=true`）GitHub Actions Artifact `keirin-prediction-input-YYYY-MM-DD` に同じ正式名だけを保存する。`.tmp.json` は入れない
+3. ChatGPTはArtifact上の正式名を読み、第一予想を最終確認・修正する。Driveへのinput新規作成は当面使わない
 4. ChatGPTが完成した `prediction_final_YYYY-MM-DD.json` を同じinboxへ置く
 5. Cursorがそれを取り込み、機械検証のあと同じ正式名をDriveへ同期する
 6. 最終予想が揃って初めて、既存シートへ転記する。6:00時点ではシートもChatworkも触らない
@@ -67,7 +67,7 @@ Chatwork送信は明示トリガーと `--confirm-send` がある場合に限り
 3. 締切18:00以降を `prediction_score` で並べ、5〜10レースを候補にする。
 4. その候補全体からCursor第一予想（最大3R）を作る。スコア上位3件への機械固定はしない。confidence Cと重要データ不足は採用しない。3Rに満たなければ推測で埋めず記録する。
 5. 作成途中は `data/inbox/prediction_input_YYYY-MM-DD.tmp.json` に書く。全データ取得・検証が終わり、重要情報が揃ってから、原子的な rename で `prediction_input_YYYY-MM-DD.json` へ切り替える。失敗時に正式名の半端ファイルは残さない。
-6. 正式名があり `status=ready` かつ `data_complete=true` のときだけ、同じファイルを `マイドライブ / ChatGPT / 競輪学習 / inbox` へ同期する。`.tmp.json` はDriveへ出さない。
+6. 正式名があり `status=ready` かつ `data_complete=true` のときだけ、GitHub Actions Artifact `keirin-prediction-input-YYYY-MM-DD` へ `prediction_input_YYYY-MM-DD.json` だけを保存する。`.tmp.json` は入れない。Driveへのinput新規作成は当面使わない。
 7. 正式名があり `status=ready` かつ `data_complete=true` のときだけ、ChatGPTが処理してよい。tmp だけ残っている日は未完成。
 8. 6:00ではここで停止する。最終予想の確定、当日シートへの予想転記、Chatwork送信、`prediction_final` 作成はしない。
 
@@ -102,9 +102,9 @@ python3 競輪予想/tools/keirin_workflow.py prepare-today
 
 ChatGPTが読むファイル:
 
-1. Driveの `競輪学習 / inbox` にある **正式名** `prediction_input_YYYY-MM-DD.json` だけ
-2. `prediction_input_YYYY-MM-DD.tmp.json` は作成途中なので読まない。Driveにも置かない
-3. 完成した最終予想だけを同じinboxへ `prediction_final_YYYY-MM-DD.json` として書く
+1. GitHub Actions Artifact `keirin-prediction-input-YYYY-MM-DD` にある **正式名** `prediction_input_YYYY-MM-DD.json` だけ
+2. `prediction_input_YYYY-MM-DD.tmp.json` は作成途中なので読まない。ArtifactにもDriveにも置かない
+3. 完成した最終予想だけを `prediction_final_YYYY-MM-DD.json` として書く
 4. 手元にJSONがある場合は、同じ正式名で Cursor に渡してもよい
 
 受け取り形式は `examples/chatgpt_final.example.json`。
@@ -133,14 +133,23 @@ python3 競輪予想/tools/keirin_workflow.py ingest-final 競輪予想/data/inb
 
 タブがなければ「テンプレ」を複製し `YYYY/MM/DD` に改名してから記入する。列・行・見出し・数式・書式は変えない。
 
-## Drive同期（完成済み当日JSONのみ）
+## ChatGPTへのinput受け渡し（Artifact）
+
+完成済み `prediction_input_YYYY-MM-DD.json`（`status=ready` かつ `data_complete=true`）だけを GitHub Actions Artifact に保存する。
+
+- Artifact名: `keirin-prediction-input-YYYY-MM-DD`
+- 中身: `prediction_input_YYYY-MM-DD.json` のみ
+- `.tmp.json` と未完成JSONは入れない
+- Driveへのinput新規作成は当面使わない（`storageQuotaExceeded`）
+- Drive同期失敗を「同期成功」と表示しない。ログは `input JSON作成` / `Artifact保存` / `Drive同期` を分ける
+
+## Drive同期（finalなど）
 
 保存先：マイドライブ / ChatGPT / 競輪学習 / inbox
 
-- 出すのは `prediction_input_YYYY-MM-DD.json` と `prediction_final_YYYY-MM-DD.json` だけ
-- `.tmp.json` はDriveへ出さない
-- input は `status="ready"` かつ `data_complete=true` のときだけ
+- input の新規作成は当面しない。ChatGPT受け渡しはArtifact
 - final はChatGPTが作った完成版だけ。検証エラー時は同期しない
+- `.tmp.json` はDriveへ出さない
 - 既存の学習用 `YYYY-MM-DD.*.json`、シート、`keirin_learning_state.json` の構造は変えない
 - ファイルIDはGitへ書かない。同名があれば更新し、重複作成しない
 
@@ -191,13 +200,13 @@ python3 競輪予想/tools/keirin_workflow.py results-yesterday
 
 保存先：マイドライブ / ChatGPT / 競輪学習 / inbox
 
-- 候補入力（完成・Drive同期する）：`prediction_input_YYYY-MM-DD.json`
+- 候補入力（完成・Artifact保存）：`prediction_input_YYYY-MM-DD.json`（Artifact名 `keirin-prediction-input-YYYY-MM-DD`）
 - 候補入力（作成途中・ローカルのみ）：`prediction_input_YYYY-MM-DD.tmp.json`
 - 最終予想（ChatGPT完成版のみDrive同期）：`prediction_final_YYYY-MM-DD.json`
 - 6:00相当：`YYYY-MM-DD.predictions.json`
 - 4:00相当：`YYYY-MM-DD.results.json` / `YYYY-MM-DD.learning.json`
 
-`prediction_input` は `status=ready` かつ `data_complete=true` のときだけDriveへ出す。
+`prediction_input` は `status=ready` かつ `data_complete=true` のときだけ Artifact へ出す。Driveへのinput新規作成は当面しない。
 学習用の `YYYY-MM-DD.*.json` と `keirin_learning_state.json` の構造は変えない。
 `sheet_written` / `chatwork_sent` は内部stateのまま。シートに管理列は足さない。
 

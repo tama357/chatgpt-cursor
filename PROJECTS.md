@@ -133,6 +133,7 @@
 
 ## 作業ログ
 
+- 2026-09-03：提出用競輪のChatGPT input受け渡しをDriveからGitHub Actions Artifactへ切替。完成済み `prediction_input` のみ `keirin-prediction-input-日付` として保存。Drive新規作成失敗はジョブ失敗にしない
 - 2026-09-03：提出用競輪の6:00を「候補抽出＋Cursor第一予想」に変更。input JSONへ候補全体と第一予想を保存しDrive同期。最終確定・シート転記・ChatworkはChatGPT担当。4:00と既存Actionsは未変更
 - 2026-09-03：提出用競輪に JST 7:30〜11:30 の final取込 Actions（`keirin-ingest`）を追加。4:00/6:00 は未変更
 - 2026-09-03：PR #13 を main へ反映。提出用競輪の JST 4:00 / 6:00 予約を `keirin-submit` として追加。個人予想 workflow は未変更
