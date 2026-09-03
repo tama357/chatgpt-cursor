@@ -7,7 +7,7 @@
 - K 解説
 - L Chatwork本文（自動式・書かない）
 - M 結果3連単 / N 払戻金 / O 結果
-- 予想1: 2〜16行、予想2: 17〜31行、予想3: 32〜46行
+    - 予想1: 2〜16行、予想2: 17〜31行、予想3: 32〜46行
 
 予想集計シート（確定・変更禁止）:
 - 手入力は P〜R のみ（1本目〜3本目）
@@ -27,8 +27,16 @@ from typing import Any, Protocol
 
 from keirin_jst import sheet_tab_date, summary_day_label, summary_tab_month
 
-ENTRY_SHEET_NAME = "原田さん｜予想記入シート"
-SUMMARY_SHEET_NAME = "原田さん｜予想集計シート"
+ENTRY_SHEET_NAME = "原田｜競輪予想記入シート（個人運用）"
+SUMMARY_SHEET_NAME = "原田｜競輪予想集計シート（個人運用）"
+DEFAULT_ENTRY_SHEET_ID = "1eDdrUF2KMwm4RN7S1PDfh6mDeCHPSr6xW5C15DAaIgs"
+DEFAULT_SUMMARY_SHEET_ID = "18wtjSxN0QADJR7SK97d1p8kD1kntL2sQhZNH2T5eTas"
+RETIRED_SHEET_IDS = frozenset(
+    {
+        "1jpAV0wKu8FrRK2WX36nEoHo7dp1p8jq8jCv_aDcCjG8",
+        "19fUqxVcad0ZtTwEcHqXXhbBJQuM7NyKv-p07xafgxhY",
+    }
+)
 TEMPLATE_TAB = "テンプレ"
 ROWS_PER_PREDICTION = 15
 FIRST_MAIN_ROW = 2
@@ -505,6 +513,24 @@ class GoogleSheetStore:
         return out
 
 
+def reject_retired_sheet_ids(*sheet_ids: str) -> None:
+    """旧提出用シートへの書き込みを拒否する。"""
+    retired = [item for item in sheet_ids if item in RETIRED_SHEET_IDS]
+    if retired:
+        raise SheetError(
+            "旧提出用シートへの書き込みは停止しています: " + ", ".join(retired)
+        )
+
+
+def resolve_sheet_ids(*, token: str | None = None) -> tuple[str, str]:
+    """個人運用シートIDを返す。環境変数があればそれを優先する。"""
+    del token  # 旧シートを名前検索で拾わない。IDを正とする。
+    entry_id = (os.environ.get("KEIRIN_ENTRY_SHEET_ID") or DEFAULT_ENTRY_SHEET_ID).strip()
+    summary_id = (os.environ.get("KEIRIN_SUMMARY_SHEET_ID") or DEFAULT_SUMMARY_SHEET_ID).strip()
+    reject_retired_sheet_ids(entry_id, summary_id)
+    return entry_id, summary_id
+
+
 def find_spreadsheet_id(token: str, title: str) -> str:
     query = urllib.parse.urlencode(
         {
@@ -530,6 +556,5 @@ def google_store_from_env() -> GoogleSheetStore:
     import keirin_drive_state as drive_state
 
     token = drive_state.get_access_token()
-    entry_id = os.environ.get("KEIRIN_ENTRY_SHEET_ID") or find_spreadsheet_id(token, ENTRY_SHEET_NAME)
-    summary_id = os.environ.get("KEIRIN_SUMMARY_SHEET_ID") or find_spreadsheet_id(token, SUMMARY_SHEET_NAME)
+    entry_id, summary_id = resolve_sheet_ids(token=token)
     return GoogleSheetStore(token, entry_id=entry_id, summary_id=summary_id)
