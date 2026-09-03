@@ -29,7 +29,7 @@ Cursorは開催データの収集・候補抽出・記録・検証だけを行�
 - データ準備：毎朝6:00（日本時間）
 - 結果記載：対象レース終了後、標準は翌朝4:00（日本時間）
 
-自動実行は GitHub Actions の `keirin-submit`（JST 4:00 結果 / JST 6:00 データ収集）。個人予想の workflow とは別です。6:00 は予想・買い目・シート転記・Chatwork を行いません。
+自動実行は GitHub Actions です。`keirin-submit` が JST 4:00 結果と JST 6:00 データ収集。`keirin-ingest` が 7:30〜11:30 に Drive の final を確認し、あれば取込とChatwork送信。6:00 は予想・買い目・シート転記・Chatwork を行いません。
 
 ## ファイル
 

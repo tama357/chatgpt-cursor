@@ -43,6 +43,7 @@ LEARNING_NAME_RE = re.compile(
 )
 INPUT_NAME_RE = re.compile(r"^prediction_input_(\d{4}-\d{2}-\d{2})\.json$")
 FINAL_NAME_RE = re.compile(r"^prediction_final_(\d{4}-\d{2}-\d{2})\.json$")
+SUBMISSION_NAME_RE = re.compile(r"^submission_state_(\d{4}-\d{2}-\d{2})\.json$")
 
 
 class DriveInboxError(RuntimeError):
@@ -95,6 +96,27 @@ def parse_allowed_daily_name(name: str) -> tuple[str, str]:
         f"{name} は同期対象外です。完成済みの prediction_input_日付.json と "
         "prediction_final_日付.json だけをDriveへ出します"
     )
+
+
+def submission_state_drive_name(date: str) -> str:
+    return f"submission_state_{date}.json"
+
+
+def parse_submission_state_name(name: str) -> str:
+    if is_tmp_name(name):
+        raise DriveInboxError(f"{name} は作成途中のためDriveへ出しません")
+    match = SUBMISSION_NAME_RE.match(name)
+    if not match:
+        raise DriveInboxError(f"{name} は提出状態ファイルではありません")
+    return match.group(1)
+
+
+def assert_drive_create_name(name: str) -> None:
+    try:
+        parse_allowed_daily_name(name)
+        return
+    except DriveInboxError:
+        parse_submission_state_name(name)
 
 
 def assert_payload_syncable(name: str, payload: dict[str, Any]) -> None:
@@ -289,7 +311,7 @@ class GoogleDriveInboxStore:
         return json.loads(raw.decode("utf-8"))
 
     def create_file(self, folder_id: str, name: str, content: bytes) -> dict[str, Any]:
-        parse_allowed_daily_name(name)
+        assert_drive_create_name(name)
         metadata = json.dumps(
             {"name": name, "parents": [folder_id], "mimeType": JSON_MIME}
         ).encode("utf-8")
@@ -422,6 +444,64 @@ def pull_ready_input(
         )
     save_json(chatgpt_input_path(root, date), loaded)
     return loaded
+
+
+def pull_submission_state(
+    root,
+    date: str,
+    *,
+    store: DriveInboxStore | None = None,
+) -> dict[str, Any] | None:
+    from keirin_submission_state import save_submission_state
+
+    client = resolve_store(store)
+    if client is None:
+        return None
+    name = submission_state_drive_name(date)
+    parse_submission_state_name(name)
+    folder_id = client.find_inbox_folder_id()
+    existing = client.find_file(folder_id, name)
+    if existing is None:
+        return None
+    loaded = json.loads(client.download(str(existing["id"])).decode("utf-8"))
+    if not isinstance(loaded, dict) or str(loaded.get("date") or "") != date:
+        raise DriveInboxError(f"Drive上の {name} の日付が不正です")
+    save_submission_state(root, loaded)
+    return loaded
+
+
+def sync_submission_state(
+    root,
+    date: str,
+    *,
+    store: DriveInboxStore | None = None,
+) -> dict[str, Any] | None:
+    from keirin_submission_state import load_submission_state
+
+    client = resolve_store(store)
+    if client is None:
+        return None
+    name = submission_state_drive_name(date)
+    parse_submission_state_name(name)
+    payload = load_submission_state(root, date)
+    folder_id = client.find_inbox_folder_id()
+    content = _encode(payload)
+    existing = client.find_file(folder_id, name)
+    if existing:
+        client.upload_replace(str(existing["id"]), content)
+        file_id = str(existing["id"])
+        action = "updated"
+    else:
+        created = client.create_file(folder_id, name, content)
+        file_id = str(created.get("id") or "")
+        if not file_id:
+            raise DriveInboxError(f"{name} をDriveへ作成できませんでした")
+        action = "created"
+    raw = client.download(file_id)
+    loaded = json.loads(raw.decode("utf-8"))
+    if loaded != payload:
+        raise DriveInboxError(f"{name} のDrive再読がローカルと一致しません")
+    return {"name": name, "file_id": file_id, "action": action, "path": INBOX_PATH_LABEL}
 
 
 def pull_completed_final(

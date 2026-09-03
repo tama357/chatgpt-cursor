@@ -1,0 +1,82 @@
+# 提出用競輪：ChatGPT final の取込と Chatwork 送信
+# 4:00 / 6:00 の keirin-submit.yml は変更しない。
+# cron は UTC。日本時間は通年 UTC+9。
+#   22:30 / 23:00 / 23:30 UTC = 翌 07:30 / 08:00 / 08:30 JST
+#   00:00〜02:30 UTC（30分間隔）= 09:00〜11:30 JST
+name: keirin-ingest
+
+on:
+  schedule:
+    - cron: "30 22 * * *"
+    - cron: "0,30 23 * * *"
+    - cron: "0,30 0 * * *"
+    - cron: "0,30 1 * * *"
+    - cron: "0,30 2 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: keirin-ingest
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  pull-requests: none
+
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      TZ: Asia/Tokyo
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r 競輪予想/requirements.txt
+
+      - name: Check required secrets without printing values
+        env:
+          GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON }}
+          CHATWORK_API_TOKEN: ${{ secrets.CHATWORK_API_TOKEN }}
+          CHATWORK_ROOM_ID: ${{ secrets.CHATWORK_ROOM_ID }}
+        run: |
+          set -euo pipefail
+          missing=0
+          if [ -z "${GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON:-}" ]; then
+            echo "GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON: 未設定"
+            missing=1
+          else
+            echo "GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON: 設定済み"
+          fi
+          if [ -z "${CHATWORK_API_TOKEN:-}" ]; then
+            echo "CHATWORK_API_TOKEN: 未設定"
+            missing=1
+          else
+            echo "CHATWORK_API_TOKEN: 設定済み"
+          fi
+          if [ -z "${CHATWORK_ROOM_ID:-}" ]; then
+            echo "CHATWORK_ROOM_ID: 未設定"
+            missing=1
+          else
+            echo "CHATWORK_ROOM_ID: 設定済み"
+          fi
+          if [ "$missing" -eq 1 ]; then
+            echo "必須Secretが不足しています。値は表示していません。"
+            exit 1
+          fi
+
+      - name: Poll Drive final and ingest
+        env:
+          GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON }}
+          CHATWORK_API_TOKEN: ${{ secrets.CHATWORK_API_TOKEN }}
+          CHATWORK_ROOM_ID: ${{ secrets.CHATWORK_ROOM_ID }}
+          TZ: Asia/Tokyo
+        run: python3 競輪予想/tools/keirin_workflow.py poll-ingest-final --confirm-send

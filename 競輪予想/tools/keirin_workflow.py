@@ -1173,6 +1173,17 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="再読一致後にChatworkへ送る。無いときは送らない",
     )
+    poll = subparsers.add_parser(
+        "poll-ingest-final",
+        help="Driveの当日finalを確認し、あればingest-finalする。無ければ正常終了",
+    )
+    poll.add_argument("--date", help="対象日 YYYY-MM-DD（省略時は今日・JST）")
+    poll.add_argument("--skip-sheets", action="store_true")
+    poll.add_argument(
+        "--confirm-send",
+        action="store_true",
+        help="取込成功後にChatworkへ送る",
+    )
     results_cmd = subparsers.add_parser(
         "results-yesterday",
         help="公式結果を取り、既存シートの結果欄・集計欄だけ更新し学習JSONへ保存",
@@ -1248,6 +1259,24 @@ def _run_cursor_command(args: argparse.Namespace) -> str:
             send_fn=send_fn,
             sync_drive=not getattr(args, "skip_drive", False),
         )
+    if args.command == "poll-ingest-final":
+        send_fn = None
+        if args.confirm_send:
+            def send_fn(data: dict[str, Any]) -> Any:
+                message = format_predictions(data)
+                token = os.environ.get("CHATWORK_API_TOKEN")
+                room_id = os.environ.get("CHATWORK_ROOM_ID")
+                if not token or not room_id:
+                    raise ValidationError("CHATWORK_API_TOKENとCHATWORK_ROOM_IDが必要です")
+                return send_chatwork(message, token, room_id)
+
+        return flow.poll_ingest_final(
+            root,
+            args.date,
+            write_sheets=not args.skip_sheets,
+            confirm_send=args.confirm_send,
+            send_fn=send_fn,
+        )
     if args.command == "results-yesterday":
         return flow.process_results(
             root,
@@ -1271,7 +1300,13 @@ def _run_cursor_command(args: argparse.Namespace) -> str:
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
-        if args.command in {"prepare-today", "ingest-final", "results-yesterday", "predict-today"}:
+        if args.command in {
+            "prepare-today",
+            "ingest-final",
+            "poll-ingest-final",
+            "results-yesterday",
+            "predict-today",
+        }:
             print(_run_cursor_command(args))
             return 0
         if args.command == "pull-state":

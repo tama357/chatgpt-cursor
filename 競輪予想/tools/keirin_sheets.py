@@ -294,11 +294,59 @@ def verify_updates(expected: list[CellUpdate], actual: dict[str, Any], *, label:
         raise SheetError(f"{label}の再読がChatGPT最終予想と一致しません: " + " / ".join(mismatches))
 
 
+def significant_prediction_updates(predictions: list[dict[str, Any]]) -> list[CellUpdate]:
+    return [item for item in prediction_cell_updates(predictions) if _norm(item.value)]
+
+
+def entry_matches_predictions(
+    store: SheetStore,
+    date: str,
+    predictions: list[dict[str, Any]],
+) -> bool:
+    """既存シートの予想値がfinalと一致するか。一致なら書き直さない。"""
+    tab = sheet_tab_date(date)
+    updates = significant_prediction_updates(predictions)
+    if not updates:
+        return False
+    try:
+        actual = store.read_entry(tab, [item.a1 for item in updates])
+    except Exception:
+        return False
+    return all(values_equal(item.value, actual.get(item.a1)) for item in updates)
+
+
+def entry_has_conflicting_predictions(
+    store: SheetStore,
+    date: str,
+    predictions: list[dict[str, Any]],
+) -> bool:
+    """当日タブに予想値が入っていて、finalと一致しない。"""
+    tab = sheet_tab_date(date)
+    refs = [a1(col, main_row(number)) for number in (1, 2, 3) for col in ("B", "D", "H")]
+    try:
+        actual = store.read_entry(tab, refs)
+    except Exception:
+        return False
+    if not any(_norm(actual.get(ref)) for ref in refs):
+        return False
+    return not entry_matches_predictions(store, date, predictions)
+
+
 def write_predictions_and_reread(
     store: SheetStore,
     date: str,
     predictions: list[dict[str, Any]],
 ) -> str:
+    if entry_matches_predictions(store, date, predictions):
+        return (
+            f"予想記入シート {sheet_tab_date(date)} は最終予想と一致済みのため、"
+            "再書き込みしません"
+        )
+    if entry_has_conflicting_predictions(store, date, predictions):
+        raise SheetError(
+            f"予想記入シート {sheet_tab_date(date)} に最終予想と違う値が入っています。"
+            "既存シートを壊さないため転記しません。"
+        )
     tab = store.ensure_entry_tab(date)
     updates = prediction_cell_updates(predictions)
     store.write_entry(tab, updates)

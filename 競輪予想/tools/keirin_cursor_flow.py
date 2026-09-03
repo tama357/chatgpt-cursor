@@ -45,8 +45,10 @@ from keirin_drive_inbox import (
     format_sync_note,
     pull_completed_final,
     pull_ready_input,
+    pull_submission_state,
     sync_completed_final,
     sync_ready_input,
+    sync_submission_state,
 )
 from keirin_sheets import (
     SheetError,
@@ -259,6 +261,11 @@ def ingest_final(
     drive_store: DriveInboxStore | None = None,
 ) -> str:
     date = date or today_str()
+    if sync_drive:
+        try:
+            pull_submission_state(root, date, store=drive_store)
+        except DriveInboxError:
+            pass
     if sync_drive and not is_chatgpt_input_ready(root, date):
         try:
             pull_ready_input(root, date, store=drive_store)
@@ -332,6 +339,11 @@ def ingest_final(
                     sub = mark_submission(root, date, sheet_written=True)
                 except (SheetError, Exception) as exc:
                     notes.append(f"シート転記または再読検証に失敗したため、Chatworkは送りません: {exc}")
+                    if sync_drive:
+                        try:
+                            sync_submission_state(root, date, store=drive_store)
+                        except DriveInboxError:
+                            pass
                     return "\n".join(notes)
     else:
         notes.append("シート転記はスキップしました（ローカル検証）。")
@@ -392,7 +404,63 @@ def ingest_final(
                 )
     else:
         notes.append("Chatworkは --confirm-send があるときだけ送ります。")
+    if sync_drive:
+        try:
+            sync_submission_state(root, date, store=drive_store)
+        except DriveInboxError as exc:
+            notes.append(f"提出状態のDrive保存に失敗: {exc}")
     return "\n".join(notes)
+
+
+NO_FINAL_RETRY = (
+    "当日の prediction_final がDriveにまだありません。"
+    "何もしません。エラーではありません。次回の確認で再チェックします。"
+)
+
+
+def poll_ingest_final(
+    root: Path,
+    date: str | None = None,
+    *,
+    sheet_store: SheetStore | None = None,
+    write_sheets: bool = True,
+    confirm_send: bool = False,
+    send_fn: Callable[[dict[str, Any]], Any] | None = None,
+    drive_store: DriveInboxStore | None = None,
+) -> str:
+    """Drive上の完成finalだけを取り込む。無ければ正常終了。"""
+    date = date or today_str()
+    try:
+        pull_submission_state(root, date, store=drive_store)
+    except DriveInboxError:
+        pass
+    sub = load_submission_state(root, date)
+    if already_fully_processed(sub):
+        return (
+            f"{date} の最終予想はすでに処理済みです。"
+            "シート転記もChatwork送信も再実行しません。"
+        )
+    pulled = None
+    try:
+        pulled = pull_completed_final(root, date, store=drive_store)
+    except (DriveInboxError, SchemaError) as exc:
+        return (
+            f"{date} のDrive上のfinalを取り込めませんでした。"
+            f"内容は補正しません。{exc}"
+        )
+    if pulled is None and not chatgpt_final_path(root, date).is_file():
+        return NO_FINAL_RETRY
+    return ingest_final(
+        root,
+        date,
+        final_file=chatgpt_final_path(root, date) if chatgpt_final_path(root, date).is_file() else None,
+        sheet_store=sheet_store,
+        write_sheets=write_sheets,
+        confirm_send=confirm_send,
+        send_fn=send_fn,
+        sync_drive=True,
+        drive_store=drive_store,
+    )
 
 
 def _classify_miss(axis: str | None, tickets: list[dict[str, Any]], trifecta: str, hit: bool) -> dict[str, Any]:

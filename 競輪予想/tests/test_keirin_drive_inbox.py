@@ -183,7 +183,7 @@ class KeirinDriveInboxTest(unittest.TestCase):
         local = json.loads(chatgpt_io.chatgpt_final_path(self.root, "2099-01-01").read_text(encoding="utf-8"))
         self.assertEqual(local["predictions"][0]["tickets"][0]["pick"], "1-2-345")
 
-    def test_submission_state_stays_local(self):
+    def test_submission_state_is_synced_to_drive_not_sheets(self):
         self._copy_example("chatgpt_input.example.json").replace(
             chatgpt_io.chatgpt_input_path(self.root, "2099-01-01")
         )
@@ -199,7 +199,82 @@ class KeirinDriveInboxTest(unittest.TestCase):
         )
         state_files = list((self.root / "data" / "state").glob("submission_state_*.json"))
         self.assertEqual(len(state_files), 1)
-        self.assertNotIn("submission_state_2099-01-01.json", self.store.creates)
+        self.assertIn("submission_state_2099-01-01.json", self.store.creates)
+        self.assertNotIn("keirin_learning_state.json", self.store.creates)
+
+    def test_poll_without_final_is_not_error(self):
+        text = flow.poll_ingest_final(
+            self.root,
+            "2099-01-01",
+            write_sheets=False,
+            drive_store=self.store,
+        )
+        self.assertIn("まだありません", text)
+        self.assertIn("エラーではありません", text)
+
+    def test_poll_ingests_drive_final_once(self):
+        self._copy_example("chatgpt_input.example.json").replace(
+            chatgpt_io.chatgpt_input_path(self.root, "2099-01-01")
+        )
+        final = json.loads((ROOT / "examples" / "chatgpt_final.example.json").read_text(encoding="utf-8"))
+        inbox.upsert_completed_json(self.store, "prediction_final_2099-01-01.json", final)
+        store = sheets.MemorySheetStore()
+        sent: list[int] = []
+
+        def send_fn(_data):
+            sent.append(1)
+            return {"message_id": "1"}
+
+        first = flow.poll_ingest_final(
+            self.root,
+            "2099-01-01",
+            sheet_store=store,
+            write_sheets=True,
+            confirm_send=True,
+            send_fn=send_fn,
+            drive_store=self.store,
+        )
+        self.assertIn("再読で完全一致", first)
+        self.assertEqual(store.write_entry_calls, 1)
+        self.assertEqual(sent, [1])
+        second = flow.poll_ingest_final(
+            self.root,
+            "2099-01-01",
+            sheet_store=store,
+            write_sheets=True,
+            confirm_send=True,
+            send_fn=send_fn,
+            drive_store=self.store,
+        )
+        self.assertIn("すでに処理済み", second)
+        self.assertEqual(store.write_entry_calls, 1)
+        self.assertEqual(sent, [1])
+
+    def test_matching_sheet_is_not_rewritten(self):
+        self._copy_example("chatgpt_input.example.json").replace(
+            chatgpt_io.chatgpt_input_path(self.root, "2099-01-01")
+        )
+        final = self._copy_example("chatgpt_final.example.json")
+        store = sheets.MemorySheetStore()
+        flow.ingest_final(
+            self.root,
+            "2099-01-01",
+            final_file=final,
+            sheet_store=store,
+            write_sheets=True,
+            sync_drive=False,
+        )
+        self.assertEqual(store.write_entry_calls, 1)
+        text = flow.ingest_final(
+            self.root,
+            "2099-01-01",
+            final_file=final,
+            sheet_store=store,
+            write_sheets=True,
+            sync_drive=False,
+        )
+        self.assertIn("再書き込みしません", text)
+        self.assertEqual(store.write_entry_calls, 1)
 
 
 if __name__ == "__main__":
