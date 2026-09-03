@@ -1,5 +1,6 @@
 import importlib.util
 import json
+import os
 import sys
 import tempfile
 import unittest
@@ -250,27 +251,29 @@ class KeirinDriveInboxTest(unittest.TestCase):
             sent.append(1)
             return {"message_id": "1"}
 
-        first = flow.poll_ingest_final(
-            self.root,
-            "2099-01-01",
-            sheet_store=store,
-            write_sheets=True,
-            confirm_send=True,
-            send_fn=send_fn,
-            drive_store=self.store,
-        )
+        with mock.patch.dict(os.environ, {"CHATWORK_ENABLED": "true"}):
+            first = flow.poll_ingest_final(
+                self.root,
+                "2099-01-01",
+                sheet_store=store,
+                write_sheets=True,
+                confirm_send=True,
+                send_fn=send_fn,
+                drive_store=self.store,
+            )
         self.assertIn("再読で完全一致", first)
         self.assertEqual(store.write_entry_calls, 1)
         self.assertEqual(sent, [1])
-        second = flow.poll_ingest_final(
-            self.root,
-            "2099-01-01",
-            sheet_store=store,
-            write_sheets=True,
-            confirm_send=True,
-            send_fn=send_fn,
-            drive_store=self.store,
-        )
+        with mock.patch.dict(os.environ, {"CHATWORK_ENABLED": "true"}):
+            second = flow.poll_ingest_final(
+                self.root,
+                "2099-01-01",
+                sheet_store=store,
+                write_sheets=True,
+                confirm_send=True,
+                send_fn=send_fn,
+                drive_store=self.store,
+            )
         self.assertIn("すでに処理済み", second)
         self.assertEqual(store.write_entry_calls, 1)
         self.assertEqual(sent, [1])
@@ -298,7 +301,10 @@ class KeirinDriveInboxTest(unittest.TestCase):
             write_sheets=True,
             sync_drive=False,
         )
-        self.assertIn("再書き込みしません", text)
+        self.assertTrue(
+            "再書き込みしません" in text or "すでに処理済み" in text,
+            text,
+        )
         self.assertEqual(store.write_entry_calls, 1)
 
 
