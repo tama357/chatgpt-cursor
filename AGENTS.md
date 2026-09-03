@@ -54,9 +54,10 @@ ChatGPTを司令塔として使い、Cursorはコード編集・開発作業に�
 - **結果**: 「昨日の結果を確認して」→ `python3 個人予想/tools/workflow.py results-yesterday`
 - 詳細: `個人予想/AGENTS.md` / ChatGPT用Excel: `個人予想/CHATGPT_EXCEL.md`
 
-## 提出用競輪（ChatGPTが最終予想）
+## 提出用競輪（個人運用・ChatGPTが最終予想）
 
 Cursorはデータ収集・候補抽出・転記・結果記録だけ行う。最終3Rと買い目は作らない。
+転記先は個人運用シート。Chatworkへは送らない。
 
 - **データ**: 「今日の競輪データを集めて」→ `python3 競輪予想/tools/keirin_workflow.py prepare-today`
 - **ChatGPTに渡すファイル**: 完成済みの `競輪予想/data/inbox/prediction_input_YYYY-MM-DD.json` だけ（`.tmp.json` は未完成）
