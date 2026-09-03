@@ -29,6 +29,7 @@ from keirin_chatgpt_io import (
 )
 from keirin_submission_state import (
     already_fully_processed,
+    chatwork_sending_enabled,
     load_submission_state,
     mark_submission,
 )
@@ -206,7 +207,7 @@ def prepare_today(
         path = write_chatgpt_input(root, payload)
         emit_github_prepare_outputs(root, date, ready=False)
         return (
-            f"【収集結果】{date} の開催・出走を取得できませんでした（source={source}）。"
+            f"【収集結果】{date} の開催・走出を取得できませんでした（source={source}）。"
             f" 第一予想も最終予想も作っていません。"
             f" 正式ファイルは未作成です。ChatGPTには渡さないでください。"
             f" 一時ファイル: {path}\n"
@@ -326,6 +327,8 @@ def ingest_final(
     drive_store: DriveInboxStore | None = None,
 ) -> str:
     date = date or today_str()
+    if not chatwork_sending_enabled():
+        confirm_send = False
     if sync_drive:
         try:
             pull_submission_state(root, date, store=drive_store)
@@ -468,7 +471,10 @@ def ingest_final(
                     f"失敗したChatworkだけ再実行できます: {exc}"
                 )
     else:
-        notes.append("Chatworkは --confirm-send があるときだけ送ります。")
+        if chatwork_sending_enabled():
+            notes.append("Chatworkは --confirm-send があるときだけ送ります。")
+        else:
+            notes.append("Chatwork送信は停止中です。API送信・再送は行いません。")
     if sync_drive:
         try:
             sync_submission_state(root, date, store=drive_store)
