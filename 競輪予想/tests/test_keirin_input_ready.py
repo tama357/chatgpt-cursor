@@ -192,15 +192,16 @@ class KeirinInputReadyTest(unittest.TestCase):
             sent.append(1)
             return {"message_id": str(len(sent))}
 
-        first = flow.ingest_final(
-            self.root,
-            "2099-01-01",
-            final_file=final,
-            sheet_store=store,
-            write_sheets=True,
-            confirm_send=True,
-            send_fn=send_fn,
-        )
+        with mock.patch.dict(os.environ, {"CHATWORK_ENABLED": "true"}):
+            first = flow.ingest_final(
+                self.root,
+                "2099-01-01",
+                final_file=final,
+                sheet_store=store,
+                write_sheets=True,
+                confirm_send=True,
+                send_fn=send_fn,
+            )
         self.assertIn("再読で完全一致", first)
         self.assertEqual(store.write_entry_calls, 1)
         self.assertEqual(sent, [1])
@@ -208,15 +209,16 @@ class KeirinInputReadyTest(unittest.TestCase):
         self.assertTrue(state["sheet_written"])
         self.assertTrue(state["chatwork_sent"])
 
-        second = flow.ingest_final(
-            self.root,
-            "2099-01-01",
-            final_file=final,
-            sheet_store=store,
-            write_sheets=True,
-            confirm_send=True,
-            send_fn=send_fn,
-        )
+        with mock.patch.dict(os.environ, {"CHATWORK_ENABLED": "true"}):
+            second = flow.ingest_final(
+                self.root,
+                "2099-01-01",
+                final_file=final,
+                sheet_store=store,
+                write_sheets=True,
+                confirm_send=True,
+                send_fn=send_fn,
+            )
         self.assertIn("すでに処理済み", second)
         self.assertEqual(store.write_entry_calls, 1)
         self.assertEqual(sent, [1])
@@ -237,30 +239,32 @@ class KeirinInputReadyTest(unittest.TestCase):
             calls.append("ok")
             return {"message_id": "2"}
 
-        first = flow.ingest_final(
-            self.root,
-            "2099-01-01",
-            final_file=final,
-            sheet_store=store,
-            write_sheets=True,
-            confirm_send=True,
-            send_fn=failing_send,
-        )
+        with mock.patch.dict(os.environ, {"CHATWORK_ENABLED": "true"}):
+            first = flow.ingest_final(
+                self.root,
+                "2099-01-01",
+                final_file=final,
+                sheet_store=store,
+                write_sheets=True,
+                confirm_send=True,
+                send_fn=failing_send,
+            )
         self.assertIn("Chatwork送信に失敗", first)
         self.assertEqual(store.write_entry_calls, 1)
         state = submission.load_submission_state(self.root, "2099-01-01")
         self.assertTrue(state["sheet_written"])
         self.assertFalse(state["chatwork_sent"])
 
-        second = flow.ingest_final(
-            self.root,
-            "2099-01-01",
-            final_file=final,
-            sheet_store=store,
-            write_sheets=True,
-            confirm_send=True,
-            send_fn=ok_send,
-        )
+        with mock.patch.dict(os.environ, {"CHATWORK_ENABLED": "true"}):
+            second = flow.ingest_final(
+                self.root,
+                "2099-01-01",
+                final_file=final,
+                sheet_store=store,
+                write_sheets=True,
+                confirm_send=True,
+                send_fn=ok_send,
+            )
         self.assertIn("再書き込みしません", second)
         self.assertIn("Chatwork: ", second)
         self.assertEqual(store.write_entry_calls, 1)
