@@ -207,7 +207,7 @@ def prepare_today(
         path = write_chatgpt_input(root, payload)
         emit_github_prepare_outputs(root, date, ready=False)
         return (
-            f"【収集結果】{date} の開催・走出を取得できませんでした（source={source}）。"
+            f"【収集結果】{date} の開催・出走を取得できませんでした（source={source}）。"
             f" 第一予想も最終予想も作っていません。"
             f" 正式ファイルは未作成です。ChatGPTには渡さないでください。"
             f" 一時ファイル: {path}\n"
