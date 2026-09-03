@@ -45,22 +45,3 @@ MISS_REASONS = {
     "accident",
     "other",
 }
-
-
-class ValidationError(ValueError):
-    pass
-
-
-@dataclass(frozen=True)
-class ExpandedTicket:
-    kind: str
-    compact: str
-    combinations: tuple[str, ...]
-
-
-def load_json(path: str | Path) -> dict[str, Any]:
-    with Path(path).open(encoding="utf-8") as handle:
-        data = json.load(handle)
-    if not isinstance(data, dict):
-        raise ValidationError("JSONの最上位はオブジェクトにしてください")
-    return data
