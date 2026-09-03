@@ -37,7 +37,7 @@
   },
   "role_split": {
     "cursor": "collect_score_extract_first_prediction_record_verify",
-    "chatgpt": "final_review_revise_sheet_chatwork",
+    "chatgpt": "final_review_revise_sheet",
     "cursor_must_not": ["finalize_prediction", "write_today_sheet_at_6", "send_chatwork_at_6", "write_final_json"],
     "sheet_structure": "do_not_change"
   },
