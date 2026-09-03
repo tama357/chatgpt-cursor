@@ -1,7 +1,8 @@
 # 競輪予想：役割分担
 
-Cursorはデータ収集・整理・記録・集計・検証だけを行う。
-最終3レースの選定、狙い、買い目、解説は **ChatGPTだけ** が行う。
+Cursorはデータ収集・候補抽出・第一予想・記録・検証を行う。
+最終確認・最終修正・シート転記・Chatwork送信は **ChatGPT** が行う。
+第一予想は最終予想ではない。ChatGPTは候補全体を見てレース・軸・買い目を変えてよい。
 
 ## 原田さんの操作（Cursorチャットだけ）
 
@@ -13,12 +14,12 @@ Cursorはデータ収集・整理・記録・集計・検証だけを行う。
 
 JSON作成とコマンド実行は Cursor が行う。原田さんにコマンド入力はさせない。
 
-1. Cursorが候補5〜10Rの入力JSONを作る
-2. 完成したら `prediction_input_YYYY-MM-DD.json` を `マイドライブ / ChatGPT / 競輪学習 / inbox` へ同期する（`.tmp.json` は出さない）
-3. ChatGPTはDrive上の正式名だけを読む
+1. Cursorが候補5〜10Rと第一予想を `prediction_input_YYYY-MM-DD.json` に入れる
+2. 完成したら同じ正式名を `マイドライブ / ChatGPT / 競輪学習 / inbox` へ同期する（`.tmp.json` は出さない）
+3. ChatGPTはDrive上の正式名だけを読み、第一予想を最終確認・修正する
 4. ChatGPTが完成した `prediction_final_YYYY-MM-DD.json` を同じinboxへ置く
 5. Cursorがそれを取り込み、機械検証のあと同じ正式名をDriveへ同期する
-6. 最終予想が揃って初めて、既存シートへ転記する
+6. 最終予想が揃って初めて、既存シートへ転記する。6:00時点ではシートもChatworkも触らない
 
 ## 正本の優先順位
 
@@ -32,15 +33,15 @@ JSON作成とコマンド実行は Cursor が行う。原田さんにコマン�
 
 | 担当 | やってよいこと | やってはいけないこと |
 |------|----------------|----------------------|
-| Cursor | 開催データ収集、prediction_scoreによる候補5〜10R抽出、ChatGPT入力JSON作成、最終予想の転記、再読検証、必要なときだけChatwork、公式結果の結果欄・集計欄更新、学習JSON保存 | 最終3Rの決定、買い目作成、ChatGPT最終予想の独自修正、既存シートの列・行・見出し・数式・書式変更 |
-| ChatGPT | 候補JSONだけを見て最終3R・狙い・confidence・本線・抑え・合計点数・解説を決める | シート構造の変更、学習項目のシート追加 |
+| Cursor | 開催データ収集、prediction_scoreによる候補5〜10R抽出、第一予想の作成、ChatGPT入力JSON作成、最終予想の機械検証と転記、再読検証、公式結果の結果欄・集計欄更新、学習JSON保存 | 第一予想を最終として確定する、6:00にシート転記する、6:00にChatwork送信する、prediction_finalをChatGPTの代わりに作る、ChatGPT最終予想の独自修正、既存シートの列・行・見出し・数式・書式変更 |
+| ChatGPT | 候補全体とCursor第一予想を比較し、最終3R・狙い・confidence・本線・抑え・合計点数・解説を決める。シート転記とChatwork送信も担当 | シート構造の変更、学習項目のシート追加 |
 
-`prediction_score` は候補を絞るためだけに使う。最終3Rや買い目には使わない。
+`prediction_score` は候補抽出の参考にする。第一予想でもスコア上位3Rへ機械固定しない。最終3RはChatGPTが決める。
 
 ## 実行トリガー
 
-- 「今日の競輪データを集めて」：収集、候補抽出、ChatGPT入力JSON作成まで。最終予想が無ければここで停止する。
-- 「今日の競輪予想を実行して」：上と同じ。最終予想JSONが無い限り、シート転記もChatworkも行わない。Cursorが代わりに予想しない。
+- 「今日の競輪データを集めて」：収集、候補抽出、第一予想作成、ChatGPT入力JSON作成まで。最終確定・シート・Chatworkはしない。
+- 「今日の競輪予想を実行して」：上と同じ。最終予想JSONが無い限り、シート転記もChatworkも行わない。Cursorは第一予想までで止める。
 - 「ChatGPTの最終予想を取り込んで」：必須項目が揃っているときだけ、既存シートの指定セルへ転記、再読検証、必要ならChatwork、学習用 `YYYY-MM-DD.predictions.json` 保存。
 - 「昨日の競輪結果を記載して」：公式結果を確認し、予想記入シートの結果欄と予想集計シートのP〜Rだけを更新。学習JSONへ検証データを保存。
 - 「準備して」「確認して」だけでは、シート更新、Chatwork送信、学習JSON保存を行わない。
@@ -63,11 +64,12 @@ Chatwork送信は明示トリガーと `--confirm-send` がある場合に限り
 
 1. 日本時間の対象日を確定する。
 2. keirin.jp から開催場、レース番号、締切時刻、出走選手、脚質、級班、直近成績、今場所・前場所、欠場フラグ、オッズ（取れる場合）を集める。取れない項目は null と risk_factors に残す。
-3. 締切18:00以降を `prediction_score` で並べ、5〜10レースを候補にする。最終3Rは決めない。
-4. 作成途中は `data/inbox/prediction_input_YYYY-MM-DD.tmp.json` に書く。全データ取得・検証が終わり、重要情報が揃ってから、原子的な rename で `prediction_input_YYYY-MM-DD.json` へ切り替える。失敗時に正式名の半端ファイルは残さない。
-5. 正式名があり `status=ready` かつ `data_complete=true` のときだけ、同じファイルを `マイドライブ / ChatGPT / 競輪学習 / inbox` へ同期する。`.tmp.json` はDriveへ出さない。
-6. 正式名があり `status=ready` かつ `data_complete=true` のときだけ、ChatGPTが処理してよい。tmp だけ残っている日は未完成。
-7. ここで停止する。買い目もシートもChatworkも触らない。
+3. 締切18:00以降を `prediction_score` で並べ、5〜10レースを候補にする。
+4. その候補全体からCursor第一予想（最大3R）を作る。スコア上位3件への機械固定はしない。confidence Cと重要データ不足は採用しない。3Rに満たなければ推測で埋めず記録する。
+5. 作成途中は `data/inbox/prediction_input_YYYY-MM-DD.tmp.json` に書く。全データ取得・検証が終わり、重要情報が揃ってから、原子的な rename で `prediction_input_YYYY-MM-DD.json` へ切り替える。失敗時に正式名の半端ファイルは残さない。
+6. 正式名があり `status=ready` かつ `data_complete=true` のときだけ、同じファイルを `マイドライブ / ChatGPT / 競輪学習 / inbox` へ同期する。`.tmp.json` はDriveへ出さない。
+7. 正式名があり `status=ready` かつ `data_complete=true` のときだけ、ChatGPTが処理してよい。tmp だけ残っている日は未完成。
+8. 6:00ではここで停止する。最終予想の確定、当日シートへの予想転記、Chatwork送信、`prediction_final` 作成はしない。
 
 ```bash
 python3 競輪予想/tools/keirin_workflow.py prepare-today
@@ -83,6 +85,8 @@ python3 競輪予想/tools/keirin_workflow.py prepare-today
 
 - `date` / `generated_at` / `status` / `candidate_count` / `data_complete` / `missing_fields` / `source_updated_at`
 - 完成時は `status="ready"` かつ `data_complete=true`
+- `candidates`（候補全体）
+- `cursor_first_prediction`（第一予想。`selected_races` / `target` / `confidence` / `main_bets` / `backup_bets` / `total_points` / `reasoning`。`is_final=false`）
 
 **重要情報**（欠けている間は正式名へ切り替えない。`missing_fields` に記録し、`status` は ready にしない）:
 

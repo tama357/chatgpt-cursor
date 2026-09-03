@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""競輪予想の検証・記録・Chatwork。Cursorは予想せず、ChatGPT最終予想だけを転記する。"""
+"""競輪予想の検証・記録・Chatwork。6:00は第一予想まで。最終転記はChatGPT最終予想だけ。"""
 
 from __future__ import annotations
 
@@ -1143,7 +1143,7 @@ def build_parser() -> argparse.ArgumentParser:
         )
     prepare = subparsers.add_parser(
         "prepare-today",
-        help="当日データを集め、候補5〜10RをChatGPT入力JSONにする。予想しない",
+        help="当日データを集め、候補5〜10RとCursor第一予想をinput JSONにする。最終確定・送信はしない",
     )
     prepare.add_argument("--date", help="対象日 YYYY-MM-DD（省略時は今日・JST）")
     prepare.add_argument("--races-file", type=Path, help="ネット無し検証用のレースJSON")

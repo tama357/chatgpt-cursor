@@ -121,6 +121,7 @@ class KeirinInputReadyTest(unittest.TestCase):
         self.assertIn("データ準備完了", text)
         self.assertIn("prediction_input_2099-01-01.json", text)
         self.assertIn("ChatGPT処理可能", text)
+        self.assertIn("第一予想", text)
         formal = chatgpt_io.chatgpt_input_path(self.root, "2099-01-01")
         tmp = chatgpt_io.chatgpt_input_tmp_path(self.root, "2099-01-01")
         self.assertTrue(formal.is_file())

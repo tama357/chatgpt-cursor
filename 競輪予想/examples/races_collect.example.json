@@ -41,8 +41,11 @@
       "deadline": "19:30",
       "close_time": "19:30",
       "riders": [
+        {"number": 1, "name": "試験花子1", "winning_style": "追", "kyuhan": "A2", "score": null, "recent_results": {"first": 1, "second": 1, "third": 1, "out": 9}},
+        {"number": 2, "name": "試験花子2", "winning_style": "両", "kyuhan": "A1", "score": null, "recent_results": {"first": 2, "second": 2, "third": 1, "out": 7}},
         {"number": 3, "name": "試験花子", "winning_style": "逃", "kyuhan": "S1", "score": null, "recent_results": {"first": 4, "second": 2, "third": 2, "out": 5}},
-        {"number": 4, "name": "試験次郎", "winning_style": "追", "kyuhan": "S2", "score": null, "recent_results": {"first": 2, "second": 4, "third": 1, "out": 6}}
+        {"number": 4, "name": "試験次郎", "winning_style": "追", "kyuhan": "S2", "score": null, "recent_results": {"first": 2, "second": 4, "third": 1, "out": 6}},
+        {"number": 5, "name": "試験花子5", "winning_style": "マ", "kyuhan": "A3", "score": null, "recent_results": {"first": 1, "second": 1, "third": 1, "out": 9}}
       ],
       "factors": {
         "axis_reliability": 17,
@@ -111,7 +114,10 @@
       "deadline": "18:40",
       "close_time": "18:40",
       "riders": [
-        {"number": 1, "name": "試験八郎", "winning_style": "逃", "kyuhan": "S2", "score": null, "recent_results": {"first": 2, "second": 2, "third": 2, "out": 6}}
+        {"number": 1, "name": "試験八郎", "winning_style": "逃", "kyuhan": "S2", "score": null, "recent_results": {"first": 2, "second": 2, "third": 2, "out": 6}},
+        {"number": 2, "name": "試験E逃2", "winning_style": "逃", "kyuhan": "S1", "score": null, "recent_results": {"first": 3, "second": 1, "third": 1, "out": 7}},
+        {"number": 3, "name": "試験E逃3", "winning_style": "逃", "kyuhan": "A1", "score": null, "recent_results": {"first": 2, "second": 1, "third": 1, "out": 8}},
+        {"number": 4, "name": "試験E追", "winning_style": "追", "kyuhan": "A2", "score": null, "recent_results": {"first": 1, "second": 1, "third": 2, "out": 8}}
       ],
       "factors": {
         "axis_reliability": 15,
@@ -122,7 +128,7 @@
         "track_style_fit": 8,
         "risk_absence": 8
       },
-      "penalties": [],
+      "penalties": [{"code": "fragmented_race", "points": 3}],
       "odds": null,
       "risk_factors": [],
       "source": "example"
@@ -134,7 +140,10 @@
       "deadline": "19:00",
       "close_time": "19:00",
       "riders": [
-        {"number": 2, "name": "試験九郎", "winning_style": "逃", "kyuhan": "A1", "score": null, "recent_results": {"first": 2, "second": 1, "third": 2, "out": 7}}
+        {"number": 1, "name": "試験F追", "winning_style": "追", "kyuhan": "A2", "score": null, "recent_results": {"first": 1, "second": 2, "third": 1, "out": 8}},
+        {"number": 2, "name": "試験九郎", "winning_style": "逃", "kyuhan": "A1", "score": null, "recent_results": {"first": 2, "second": 1, "third": 2, "out": 7}},
+        {"number": 3, "name": "試験F両", "winning_style": "両", "kyuhan": "A2", "score": null, "recent_results": {"first": 1, "second": 1, "third": 2, "out": 8}},
+        {"number": 4, "name": "試験Fマ", "winning_style": "マ", "kyuhan": "A3", "score": null, "recent_results": {"first": 0, "second": 1, "third": 1, "out": 10}}
       ],
       "factors": {
         "axis_reliability": 14,

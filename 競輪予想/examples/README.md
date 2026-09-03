@@ -7,7 +7,7 @@ ChatGPTに渡してよいのは、完成済みの正式名だけです。
 | ChatGPT入力 | `prediction_input_YYYY-MM-DD.json` | `prediction_input_YYYY-MM-DD.tmp.json` |
 | ChatGPT最終予想 | `prediction_final_YYYY-MM-DD.json` | （最終予想に一時ファイルは使わない） |
 
-- 入力例: `chatgpt_input.example.json`（`status=ready` かつ `data_complete=true`）
+- 入力例: `chatgpt_input.example.json`（`status=ready` かつ `data_complete=true`。候補全体と `cursor_first_prediction`）
 - 最終予想例: `chatgpt_final.example.json`
 - 収集テスト用: `races_collect.example.json`
 

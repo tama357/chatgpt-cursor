@@ -1,4 +1,4 @@
-"""ChatGPT入力JSONと最終予想JSONのスキーマ。Cursorは最終予想を作らない。"""
+"""ChatGPT入力JSONと最終予想JSONのスキーマ。Cursorは第一予想まで。最終はChatGPT。"""
 
 from __future__ import annotations
 
@@ -285,8 +285,8 @@ def build_chatgpt_input(
         "role": INPUT_ROLE,
         "date": date,
         "timezone": "Asia/Tokyo",
-        "cursor_role": "data_collection_only",
-        "chatgpt_role": "final_prediction",
+        "cursor_role": "data_and_first_prediction",
+        "chatgpt_role": "final_review_sheet_chatwork",
         "rules": {
             "final_race_count": 3,
             "minimum_close_time": rules.get("minimum_close_time") or "18:00",
@@ -297,15 +297,26 @@ def build_chatgpt_input(
             "confidence": ["A", "B", "C"],
         },
         "notes": (
-            "これは候補レースのデータです。Cursorは最終3Rも買い目も決めていません。"
+            "候補全体とCursor第一予想です。第一予想は最終ではありません。"
+            "ChatGPTは候補全体を再確認し、レース選定・軸・買い目を変更できます。"
             "ファイル名が prediction_input_日付.json で status が ready のときだけ処理してください。"
             "prediction_input_日付.tmp.json は作成途中なので読まないでください。"
-            "ChatGPTはこのJSONだけを見て、選定3レース・狙い・confidence・本線・抑え・合計点数・解説を返してください。"
+            "最終確認後に prediction_final_日付.json を書き、シート転記とChatwork送信もChatGPT側で行います。"
         ),
         "candidates": items,
+        "cursor_first_prediction": _first_prediction_for_input(items, rules),
         "skipped_count": len(skipped or []),
     }
     return apply_input_status(payload)
+
+
+def _first_prediction_for_input(
+    candidates: list[dict[str, Any]],
+    rules: dict[str, Any],
+) -> dict[str, Any]:
+    from keirin_first_prediction import build_cursor_first_prediction
+
+    return build_cursor_first_prediction(candidates, rules)
 
 
 def _candidate_for_chatgpt(item: dict[str, Any], extract_rank: int) -> dict[str, Any]:

@@ -9,8 +9,8 @@
   "missing_fields": [],
   "source_updated_at": "2099-01-01T06:00:00+09:00",
   "timezone": "Asia/Tokyo",
-  "cursor_role": "data_collection_only",
-  "chatgpt_role": "final_prediction",
+  "cursor_role": "data_and_first_prediction",
+  "chatgpt_role": "final_review_sheet_chatwork",
   "rules": {
     "final_race_count": 3,
     "minimum_close_time": "18:00",
@@ -20,7 +20,7 @@
     "targets": ["鉄板", "中穴", "大穴"],
     "confidence": ["A", "B", "C"]
   },
-  "notes": "これは候補レースのデータです。Cursorは最終3Rも買い目も決めていません。ファイル名が prediction_input_日付.json で status が ready のときだけ処理してください。prediction_input_日付.tmp.json は作成途中なので読まないでください。ChatGPTはこのJSONだけを見て、選定3レース・狙い・confidence・本線・抑え・合計点数・解説を返してください。",
+  "notes": "候補全体とCursor第一予想です。第一予想は最終ではありません。ChatGPTは候補全体を再確認し、レース選定・軸・買い目を変更できます。ファイル名が prediction_input_日付.json で status が ready のときだけ処理してください。prediction_input_日付.tmp.json は作成途中なので読まないでください。最終確認後に prediction_final_日付.json を書き、シート転記とChatwork送信もChatGPT側で行います。",
   "candidates": [
     {
       "extract_rank": 1,
@@ -163,5 +163,69 @@
       "source": "example"
     }
   ],
-  "skipped_count": 0
+  "skipped_count": 0,
+  "cursor_first_prediction": {
+    "is_final": false,
+    "chatgpt_may_revise": true,
+    "selected_races": [
+      {
+        "number": 1,
+        "venue": "テスト競輪場A",
+        "race": 7,
+        "close_time": "18:20",
+        "target": "鉄板",
+        "confidence": "A",
+        "main_bets": ["1-2-345"],
+        "backup_bets": ["2-1-345"],
+        "total_points": 6,
+        "reasoning": "軸1のラインを本線にした第一予想。最終ではない。",
+        "tickets": [
+          {"type": "本線", "pick": "1-2-345"},
+          {"type": "抑え", "pick": "2-1-345"}
+        ]
+      },
+      {
+        "number": 2,
+        "venue": "テスト競輪場B",
+        "race": 10,
+        "close_time": "19:30",
+        "target": "中穴",
+        "confidence": "B",
+        "main_bets": ["3-4-125"],
+        "backup_bets": ["4-3-125"],
+        "total_points": 6,
+        "reasoning": "軸3の第一予想。最終ではない。",
+        "tickets": [
+          {"type": "本線", "pick": "3-4-125"},
+          {"type": "抑え", "pick": "4-3-125"}
+        ]
+      },
+      {
+        "number": 3,
+        "venue": "テスト競輪場D",
+        "race": 11,
+        "close_time": "20:00",
+        "target": "中穴",
+        "confidence": "B",
+        "main_bets": ["1-2-367"],
+        "backup_bets": ["2-1-367"],
+        "total_points": 6,
+        "reasoning": "スコア3位のC12RではなくD11Rを第一予想に入れた例。最終ではない。",
+        "tickets": [
+          {"type": "本線", "pick": "1-2-367"},
+          {"type": "抑え", "pick": "2-1-367"}
+        ]
+      }
+    ],
+    "target": ["鉄板", "中穴", "中穴"],
+    "confidence": ["A", "B", "B"],
+    "main_bets": [["1-2-345"], ["3-4-125"], ["1-2-367"]],
+    "backup_bets": [["2-1-345"], ["4-3-125"], ["2-1-367"]],
+    "total_points": 18,
+    "reasoning": "Cursor第一予想としてA7R・B10R・D11Rを選んだ。prediction_score上位3Rを機械的に選んでいない。C12R（スコア3位）は出走不足のため見送り。最終予想ではない。ChatGPTが候補全体を再確認し変更してよい。",
+    "shortfall_reason": null,
+    "rejected_races": [
+      {"venue": "テスト競輪場C", "race": 12, "prediction_score": 72, "reason": "出走選手が不足しており三連単を組めない（重要データ不足）"}
+    ]
+  }
 }

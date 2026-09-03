@@ -1,4 +1,4 @@
-"""prediction_score は候補抽出専用。最終3Rや買い目には使わない。"""
+"""prediction_score は候補抽出の参考。第一予想でも上位3Rへ機械固定しない。最終3RはChatGPT。"""
 
 from __future__ import annotations
 

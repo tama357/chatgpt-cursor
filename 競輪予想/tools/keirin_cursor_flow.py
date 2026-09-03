@@ -1,6 +1,7 @@
-"""Cursor担当フロー: 収集・候補抽出・ChatGPT入出力・転記検証・結果記録。
+"""Cursor担当フロー: 収集・候補抽出・第一予想・ChatGPT入出力・転記検証・結果記録。
 
-Cursorは最終3Rも買い目も作らない。最終予想が無い提出は停止する。
+6:00は第一予想まで。最終確定・シート転記・ChatworkはChatGPT担当。
+最終予想が無い提出は停止する。
 """
 
 from __future__ import annotations
@@ -68,7 +69,7 @@ class CursorMustNotPredict(RuntimeError):
     pass
 
 
-def refuse_cursor_prediction(reason: str = "Cursorは競輪の予想そのものを行いません") -> None:
+def refuse_cursor_prediction(reason: str = "Cursorは最終予想を確定しません。第一予想は最終ではありません") -> None:
     raise CursorMustNotPredict(reason)
 
 
@@ -171,7 +172,7 @@ def prepare_today(
         path = write_chatgpt_input(root, payload)
         return (
             f"【収集結果】{date} の開催・出走を取得できませんでした（source={source}）。"
-            f" Cursorは予想しません。"
+            f" 第一予想も最終予想も作っていません。"
             f" 正式ファイルは未作成です。ChatGPTには渡さないでください。"
             f" 一時ファイル: {path}"
         )
@@ -194,6 +195,17 @@ def prepare_today(
     formal = chatgpt_input_path(root, date)
     tmp = chatgpt_input_tmp_path(root, date)
     missing = "、".join(payload.get("missing_fields") or [])
+    first = payload.get("cursor_first_prediction") or {}
+    first_names = "、".join(
+        f"{item.get('venue')}{item.get('race')}R"
+        for item in (first.get("selected_races") or [])
+        if isinstance(item, dict)
+    )
+    first_note = (
+        f"Cursor第一予想: {first_names or 'なし'}。"
+        f"{first.get('shortfall_reason') or '3Rまで作成済み。'}"
+        "これは最終予想ではありません。"
+    )
     if not ready:
         return (
             f"【データ未完成】{date} の候補を {len(selected)} レース抽出しましたが、"
@@ -202,18 +214,20 @@ def prepare_today(
             f"欠けている項目: {missing or '不明'}\n"
             f"一時ファイル: {tmp}\n"
             f"{chatgpt_input_readiness_message(root, date)}\n"
-            f"最終3Rと買い目は作っていません。ChatGPTには渡さないでください。"
+            f"{first_note}\n"
+            f"シート転記とChatworkは行っていません。ChatGPTには渡さないでください。"
         )
     return (
-        f"【データ準備完了】{date} の候補を {len(selected)} レース抽出しました（{source}）。\n"
+        f"【データ準備完了】{date} の候補を {len(selected)} レース抽出し、第一予想をinputへ入れました（{source}）。\n"
         f"候補: {names or 'なし'}\n"
+        f"{first_note}\n"
         f"ChatGPT入力JSON: {formal}\n"
         f"{chatgpt_input_readiness_message(root, date)}\n"
         f"この正式名（{formal.name}）だけをChatGPTに渡してください。"
         f" {tmp.name} は作成途中なので渡さないでください。\n"
         f"{_sync_ready_input_note(root, date, sync_drive=sync_drive, drive_store=drive_store)}\n"
-        f"最終3Rと買い目は作っていません。\n"
-        f"最終予想JSONが来るまで提出・シート転記・Chatworkは行いません。"
+        f"最終予想としては確定していません。prediction_finalは作っていません。\n"
+        f"6:00時点ではシート転記もChatwork送信も行いません。"
     )
 
 

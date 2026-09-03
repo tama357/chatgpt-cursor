@@ -50,7 +50,8 @@ class KeirinRoleSplitTest(unittest.TestCase):
         races = self._copy_example("races_collect.example.json")
         text = flow.prepare_today(self.root, "2099-01-01", races_file=races)
         self.assertIn("データ準備完了", text)
-        self.assertIn("最終3Rと買い目は作っていません", text)
+        self.assertIn("第一予想をinputへ入れました", text)
+        self.assertIn("シート転記もChatwork送信も行いません", text)
         path = chatgpt_io.chatgpt_input_path(self.root, "2099-01-01")
         data = json.loads(path.read_text(encoding="utf-8"))
         self.assertEqual(data["role"], "chatgpt_input")
@@ -58,6 +59,8 @@ class KeirinRoleSplitTest(unittest.TestCase):
         self.assertTrue(data["data_complete"])
         self.assertGreaterEqual(len(data["candidates"]), 5)
         self.assertLessEqual(len(data["candidates"]), 10)
+        self.assertIn("cursor_first_prediction", data)
+        self.assertFalse(data["cursor_first_prediction"]["is_final"])
         for item in data["candidates"]:
             self.assertIn("prediction_score", item)
             self.assertIn("riders", item)
@@ -66,6 +69,7 @@ class KeirinRoleSplitTest(unittest.TestCase):
             self.assertNotIn("tickets", item)
             self.assertGreaterEqual(item["deadline"] or item["close_time"], "18:00")
         self.assertTrue(all("17:50" not in (c.get("deadline") or "") for c in data["candidates"]))
+        self.assertFalse(chatgpt_io.chatgpt_final_path(self.root, "2099-01-01").exists())
 
     def test_predict_today_stops_without_final(self):
         races = self._copy_example("races_collect.example.json")
