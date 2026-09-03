@@ -64,13 +64,3 @@ def load_json(path: str | Path) -> dict[str, Any]:
     if not isinstance(data, dict):
         raise ValidationError("JSONの最上位はオブジェクトにしてください")
     return data
-
-
-def validate_date(value: Any) -> str:
-    if not isinstance(value, str):
-        raise ValidationError("dateはYYYY-MM-DD形式の文字列が必要です")
-    try:
-        datetime.strptime(value, "%Y-%m-%d")
-    except ValueError as exc:
-        raise ValidationError("dateはYYYY-MM-DD形式にしてください") from exc
-    return value
