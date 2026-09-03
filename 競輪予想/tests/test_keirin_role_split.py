@@ -1,9 +1,11 @@
 import importlib.util
 import json
+import os
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -25,6 +27,7 @@ workflow = _load("keirin_workflow", TOOLS / "keirin_workflow.py")
 flow = _load("keirin_cursor_flow", TOOLS / "keirin_cursor_flow.py")
 chatgpt_io = _load("keirin_chatgpt_io", TOOLS / "keirin_chatgpt_io.py")
 sheets = _load("keirin_sheets", TOOLS / "keirin_sheets.py")
+submission = _load("keirin_submission_state", TOOLS / "keirin_submission_state.py")
 
 
 class KeirinRoleSplitTest(unittest.TestCase):
@@ -215,6 +218,84 @@ class KeirinRoleSplitTest(unittest.TestCase):
             preds = {(p["venue"], p["race"]) for p in saved["days"][0]["predictions"]}
             self.assertIn(("テスト競輪場D", 11), preds)
             self.assertNotIn(("テスト競輪場C", 12), preds)
+
+    def test_personal_sheet_ids_and_retired_guard(self):
+        self.assertEqual(
+            sheets.ENTRY_SHEET_NAME, "原田｜競輪予想記入シート（個人運用）"
+        )
+        self.assertEqual(
+            sheets.SUMMARY_SHEET_NAME, "原田｜競輪予想集計シート（個人運用）"
+        )
+        self.assertEqual(
+            sheets.DEFAULT_ENTRY_SHEET_ID,
+            "1eDdrUF2KMwm4RN7S1PDfh6mDeCHPSr6xW5C15DAaIgs",
+        )
+        self.assertEqual(
+            sheets.DEFAULT_SUMMARY_SHEET_ID,
+            "18wtjSxN0QADJR7SK97d1p8kD1kntL2sQhZNH2T5eTas",
+        )
+        with mock.patch.dict(
+            os.environ,
+            {
+                "KEIRIN_ENTRY_SHEET_ID": "1jpAV0wKu8FrRK2WX36nEoHo7dp1p8jq8jCv_aDcCjG8",
+                "KEIRIN_SUMMARY_SHEET_ID": "18wtjSxN0QADJR7SK97d1p8kD1kntL2sQhZNH2T5eTas",
+            },
+        ):
+            with self.assertRaises(sheets.SheetError) as ctx:
+                sheets.resolve_sheet_ids()
+            self.assertIn("旧提出用シート", str(ctx.exception))
+        entry_id, summary_id = sheets.resolve_sheet_ids()
+        self.assertEqual(entry_id, sheets.DEFAULT_ENTRY_SHEET_ID)
+        self.assertEqual(summary_id, sheets.DEFAULT_SUMMARY_SHEET_ID)
+
+    def test_chatwork_disabled_does_not_send_or_retry(self):
+        self._copy_example("chatgpt_input.example.json").replace(
+            chatgpt_io.chatgpt_input_path(self.root, "2099-01-01")
+        )
+        final = self._copy_example("chatgpt_final.example.json")
+        store = sheets.MemorySheetStore()
+        sent: list[int] = []
+
+        def send_fn(_data):
+            sent.append(1)
+            return {"message_id": "1"}
+
+        text = flow.ingest_final(
+            self.root,
+            "2099-01-01",
+            final_file=final,
+            sheet_store=store,
+            write_sheets=True,
+            confirm_send=True,
+            send_fn=send_fn,
+        )
+        self.assertIn("再読で完全一致", text)
+        self.assertIn("Chatwork送信は停止中", text)
+        self.assertEqual(sent, [])
+        state = submission.load_submission_state(self.root, "2099-01-01")
+        self.assertTrue(state["sheet_written"])
+        self.assertFalse(state["chatwork_sent"])
+        self.assertTrue(submission.already_fully_processed(state))
+
+        second = flow.ingest_final(
+            self.root,
+            "2099-01-01",
+            final_file=final,
+            sheet_store=store,
+            write_sheets=True,
+            confirm_send=True,
+            send_fn=send_fn,
+        )
+        self.assertIn("すでに処理済み", second)
+        self.assertEqual(store.write_entry_calls, 1)
+        self.assertEqual(sent, [])
+
+    def test_send_predictions_cli_stays_disabled(self):
+        pred_path = ROOT / "examples" / "predictions.example.json"
+        with mock.patch.object(workflow, "send_chatwork") as send:
+            code = workflow.main(["send-predictions", str(pred_path), "--confirm-send"])
+        self.assertEqual(code, 1)
+        send.assert_not_called()
 
 
 if __name__ == "__main__":
