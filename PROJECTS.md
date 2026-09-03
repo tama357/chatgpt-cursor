@@ -133,6 +133,7 @@
 
 ## 作業ログ
 
+- 2026-09-03：PR #13 を main へ反映。提出用競輪の JST 4:00 / 6:00 予約を `keirin-submit` として追加。個人予想 workflow は未変更
 - 2026-09-02：完成済みの当日JSON（prediction_input / prediction_final）だけを `ChatGPT/競輪学習/inbox` へ同期。tmp・未完成・学習state・シート構造は変更しない（`競輪予想/`）
 - 2026-09-02：競輪入力JSONを tmp→正式名で区別し、status/ready・final検証停止（補正なし）・シート/Chatworkの二重送信防止を追加（`競輪予想/`）
 - 2026-09-02：提出用競輪を Cursor＝収集・候補抽出・転記 / ChatGPT＝最終3R・買い目 に分離。既存シート構造は非変更。最終予想が無い提出は停止（`競輪予想/`）

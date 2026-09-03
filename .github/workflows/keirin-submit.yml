@@ -1,0 +1,93 @@
+# 提出用競輪の新運用（Cursor＝データ、ChatGPT＝最終予想）
+# cron は UTC。日本時間は通年 UTC+9（サマータイムなし）。
+#   19:00 UTC = 翌 04:00 JST（前日結果）
+#   21:00 UTC = 翌 06:00 JST（当日データ収集）
+# 個人予想の personal-predict.yml は変更しない。
+name: keirin-submit
+
+on:
+  schedule:
+    - cron: "0 19 * * *"
+    - cron: "0 21 * * *"
+  workflow_dispatch:
+    inputs:
+      job:
+        description: "実行内容"
+        type: choice
+        required: true
+        default: prepare-today
+        options:
+          - prepare-today
+          - results-yesterday
+
+concurrency:
+  group: keirin-submit
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  pull-requests: none
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      TZ: Asia/Tokyo
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r 競輪予想/requirements.txt
+
+      - name: Decide job
+        id: decide
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          SCHEDULE: ${{ github.event.schedule }}
+          INPUT_JOB: ${{ inputs.job }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            echo "job=${INPUT_JOB}" >> "$GITHUB_OUTPUT"
+          elif [ "$SCHEDULE" = "0 19 * * *" ]; then
+            echo "job=results-yesterday" >> "$GITHUB_OUTPUT"
+          else
+            echo "job=prepare-today" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Check Drive auth presence
+        id: auth
+        env:
+          GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON }}
+        run: |
+          set -euo pipefail
+          if [ -z "${GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON:-}" ]; then
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "Drive認証: 利用不可（Secret未設定）"
+            exit 1
+          fi
+          echo "present=true" >> "$GITHUB_OUTPUT"
+          echo "Drive認証: 予約環境で利用可能"
+
+      - name: Results yesterday (JST 4:00)
+        if: steps.decide.outputs.job == 'results-yesterday'
+        env:
+          GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON }}
+          TZ: Asia/Tokyo
+        run: python3 競輪予想/tools/keirin_workflow.py results-yesterday
+
+      - name: Prepare today (JST 6:00)
+        if: steps.decide.outputs.job == 'prepare-today'
+        env:
+          GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON }}
+          TZ: Asia/Tokyo
+        run: python3 競輪予想/tools/keirin_workflow.py prepare-today
