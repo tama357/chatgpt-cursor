@@ -1,7 +1,8 @@
 # 競輪予想（Cursor＝第一予想まで、ChatGPT＝最終確認と送信）
 
 Cursorは開催データの収集・候補抽出・第一予想・記録・検証を行う。
-最終確認・最終修正・シート転記・Chatwork送信は ChatGPT が行う。
+最終確認・最終修正・個人運用シートへの転記は ChatGPT が行う。
+Chatworkへの予想提出と結果報告は停止する。
 既存のGoogleスプレッドシートの構造は変えない。
 
 ## 原田さんの使い方（チャットのみ）
@@ -30,25 +31,7 @@ Cursorは開催データの収集・候補抽出・第一予想・記録・検�
 - データ準備：毎朝6:00（日本時間）
 - 結果記載：対象レース終了後、標準は翌朝4:00（日本時間）
 
-自動実行は GitHub Actions です。`keirin-submit` が JST 4:00 結果と JST 6:00 データ収集＋第一予想。完成inputは Artifact `keirin-prediction-input-YYYY-MM-DD` でChatGPTへ渡す。`keirin-ingest` が 7:30〜11:30 に Drive の final を確認し、あれば取込とChatwork送信。6:00 は最終確定・シート転記・Chatwork を行いません。
-
-## ファイル
-
-- `AGENTS.md`：役割分担、シート範囲、送信ルール
-- `current_rules.json`：機械可読な最新条件。`prediction_score` は候補抽出の参考。第一予想でも上位3Rへ機械固定しない
-- `examples/chatgpt_input.example.json`：ChatGPTへ渡す候補全体＋第一予想（`status=ready`）
-- `tools/keirin_first_prediction.py`：Cursor第一予想。最終ではない
-- `examples/chatgpt_final.example.json`：ChatGPTから受け取る最終予想（スコア4位を選ぶ例を含む）
-- `examples/README.md`：正式名と一時ファイルの見分け方
-- `examples/races_collect.example.json`：ネット無しの収集テスト用
-- `examples/predictions.example.json`：Chatwork本文用
-- `examples/day_predictions.example.json`：学習inbox用
-- `examples/results.example.json`：結果入力例
-- `tools/keirin_workflow.py`：検証、state、Chatwork、当日フローの入口
-- `tools/keirin_cursor_flow.py`：収集・候補抽出・第一予想・最終予想取り込み・結果
-- `tools/keirin_sheets.py`：指定セルへの値転記と再読。列追加はしない
-- `tools/keirin_drive_inbox.py`：完成済み当日JSONだけを競輪学習inboxへ同期。tmpと学習stateは出さない
-- `tests/test_keirin_role_split.py`：役割分担とガードのテスト
+自動実行は GitHub Actions です。`keirin-submit` が JST 4:00 結果と JST 6:00 データ収集＋第一予想。完成inputは Artifact `keirin-prediction-input-YYYY-MM-DD` でChatGPTへ渡す。`keirin-ingest` が 7:30〜11:30 に Drive の final を確認し、あれば個人運用シートへ取り込む。Chatworkは送らない。6:00 は最終確定・シート転記・Chatwork を行いません。
 
 ## 既存シート
 
@@ -60,17 +43,4 @@ Cursorは開催データの収集・候補抽出・第一予想・記録・検�
 
 学習用の項目はシートに足さない。JSONだけに残す。
 
-## ローカル検証
-
-```bash
-python3 競輪予想/tools/keirin_workflow.py prepare-today --date 2099-01-01 --races-file 競輪予想/examples/races_collect.example.json
-python3 競輪予想/tools/keirin_workflow.py ingest-final 競輪予想/examples/chatgpt_final.example.json --date 2099-01-01 --skip-sheets
-# 完成済み入力は prediction_input_日付.json 。tmp は未完成。
-python3 競輪予想/tools/keirin_workflow.py results-yesterday --date 2099-01-01 --results-file 競輪予想/examples/results.example.json --skip-sheets
-python3 競輪予想/tools/keirin_workflow.py validate-predictions 競輪予想/examples/predictions.example.json
-python3 -m unittest discover -s 競輪予想/tests -v
-```
-
-`predict-today` は互換用。中身は収集・候補抽出・第一予想であり、最終予想が無ければ停止する。
-
-Chatwork実送信には `--confirm-send` と環境変数が必要。トークンは公開リポジトリへ保存しない。
+Chatwork実送信は停止中。`--confirm-send` があっても `CHATWORK_ENABLED=true` が無い限り送らない。
