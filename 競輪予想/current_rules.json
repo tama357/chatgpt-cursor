@@ -69,9 +69,16 @@
       "ticket_count"
     ]
   },
-  "prediction_spreadsheet_name": "原田さん｜予想記入シート",
-  "summary_spreadsheet_name": "原田さん｜予想集計シート",
+  "prediction_spreadsheet_name": "原田｜競輪予想記入シート（個人運用）",
+  "summary_spreadsheet_name": "原田｜競輪予想集計シート（個人運用）",
+  "prediction_spreadsheet_id": "1eDdrUF2KMwm4RN7S1PDfh6mDeCHPSr6xW5C15DAaIgs",
+  "summary_spreadsheet_id": "18wtjSxN0QADJR7SK97d1p8kD1kntL2sQhZNH2T5eTas",
+  "retired_spreadsheet_ids": [
+    "1jpAV0wKu8FrRK2WX36nEoHo7dp1p8jq8jCv_aDcCjG8",
+    "19fUqxVcad0ZtTwEcHqXXhbBJQuM7NyKv-p07xafgxhY"
+  ],
+  "chatwork_enabled": false,
   "chatwork_room_id_env": "CHATWORK_ROOM_ID",
   "chatwork_token_env": "CHATWORK_API_TOKEN",
-  "chatwork_send_requires_trigger": "ChatGPTの最終予想を取り込んで"
+  "chatwork_send_requires_trigger": ""
 }
