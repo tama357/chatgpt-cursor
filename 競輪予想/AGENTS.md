@@ -1,18 +1,15 @@
 # 競輪予想：役割分担
 
-Cursorはデータ収集・候補抽出・第一予想・記録・検証を行う。
-最終確認・最終修正・シート転記・Chatwork送信は **ChatGPT** が行う。
-第一予想は最終予想ではない。ChatGPTは候補全体を見てレース・軸・買い目を変えてよい。
+**Cursor連携運用は終了した。** 今後の競輪予想はChatGPTが単独で情報収集・3R選定・買い目作成・個人用シート記入を行う。
+
+Cursorは競輪の収集・第一予想・ingest-final・結果記載・シート書き込み・Chatwork・Artifact・Drive同期・GitHub Actions手動実行・テストを行わない。
+`keirin-submit` / `keirin-ingest` は停止。コードと過去データは残す。`personal-predict.yml` には触れない。
+
+以下は停止前の記録である。
 
 ## 原田さんの操作（Cursorチャットだけ）
 
-| やりたいこと | 伝える文言 |
-|--------------|------------|
-| 当日データを集める | **「今日の競輪データを集めて」** |
-| ChatGPTの最終予想を提出する | **「ChatGPTの最終予想を取り込んで」** |
-| 昨日の結果 | **「昨日の競輪結果を記載して」** |
-
-JSON作成とコマンド実行は Cursor が行う。原田さんにコマンド入力はさせない。
+Cursorからは実行しない。
 
 1. Cursorが候補5〜10Rと第一予想を `prediction_input_YYYY-MM-DD.json` に入れる
 2. 完成したら（`status=ready` かつ `data_complete=true`）GitHub Actions Artifact `keirin-prediction-input-YYYY-MM-DD` に同じ正式名だけを保存する。`.tmp.json` は入れない

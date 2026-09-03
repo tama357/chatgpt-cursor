@@ -1,17 +1,7 @@
-# 提出用競輪：ChatGPT final の取込と Chatwork 送信
-# 4:00 / 6:00 の keirin-submit.yml は変更しない。
-# cron は UTC。日本時間は通年 UTC+9。
-#   22:30 / 23:00 / 23:30 UTC = 翌 07:30 / 08:00 / 08:30 JST
-#   00:00〜02:30 UTC（30分間隔）= 09:00〜11:30 JST
+# 停止中。競輪のCursor連携運用は終了。コードは残し、定期実行・手動実行はしない。
 name: keirin-ingest
 
 on:
-  schedule:
-    - cron: "30 22 * * *"
-    - cron: "0,30 23 * * *"
-    - cron: "0,30 0 * * *"
-    - cron: "0,30 1 * * *"
-    - cron: "0,30 2 * * *"
   workflow_dispatch:
 
 concurrency:
@@ -24,6 +14,7 @@ permissions:
 
 jobs:
   ingest:
+    if: false
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:

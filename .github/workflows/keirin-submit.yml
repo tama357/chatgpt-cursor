@@ -1,25 +1,9 @@
-# 提出用競輪の新運用（Cursor＝データ＋第一予想、ChatGPT＝最終予想）
-# cron は UTC。日本時間は通年 UTC+9（サマータイムなし）。
-#   19:00 UTC = 翌 04:00 JST（前日結果）
-#   21:00 UTC = 翌 06:00 JST（当日データ収集＋第一予想）
+# 停止中。競輪のCursor連携運用は終了。コードは残し、定期実行・手動実行はしない。
 # 個人予想の personal-predict.yml は変更しない。
-# ChatGPTへのinput受け渡しは GitHub Actions Artifact。Drive新規作成は当面使わない。
 name: keirin-submit
 
 on:
-  schedule:
-    - cron: "0 19 * * *"
-    - cron: "0 21 * * *"
   workflow_dispatch:
-    inputs:
-      job:
-        description: "実行内容"
-        type: choice
-        required: true
-        default: prepare-today
-        options:
-          - prepare-today
-          - results-yesterday
 
 concurrency:
   group: keirin-submit
@@ -32,6 +16,7 @@ permissions:
 
 jobs:
   run:
+    if: false
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:

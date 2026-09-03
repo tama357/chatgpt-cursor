@@ -29,6 +29,12 @@ class ValidationError(ValueError):
     pass
 
 
+KEIRIN_CURSOR_OPS_STOPPED = (
+    "競輪予想のCursor連携運用は終了しています。"
+    "収集・第一予想・ingest-final・結果記載・シート書き込み・Chatwork・Artifact・Drive同期は実行しません。"
+)
+
+
 def expand_pick(compact: str) -> tuple[str, ...]:
     match = PICK_RE.fullmatch(compact)
     if not match:
@@ -196,6 +202,7 @@ def _root() -> Path:
 
 
 def _run_cursor_command(args: argparse.Namespace) -> str:
+    raise ValidationError(KEIRIN_CURSOR_OPS_STOPPED)
     import keirin_cursor_flow as flow
     from keirin_jst import today_str, yesterday_str
 
@@ -250,6 +257,7 @@ def _run_cursor_command(args: argparse.Namespace) -> str:
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
+        raise ValidationError(KEIRIN_CURSOR_OPS_STOPPED)
         if args.command == "send-predictions":
             raise ValidationError("Chatwork送信は個人運用のため停止しています。")
         print(_run_cursor_command(args))

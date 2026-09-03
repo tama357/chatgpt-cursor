@@ -1,10 +1,10 @@
 # TODAY
 
-最終更新：2026-09-04
+最終更新：2026-09-04（提出用競輪のCursor連携を停止）
 
 ## 🔥 最優先
 
-- [ ] 今日の競輪データを集め、ChatGPTに最終予想してもらう
+- [x] 提出用競輪のCursor連携運用を終了する（keirin-submit / keirin-ingest 停止。ChatGPT単独運用）
 - [ ] CrowdWorks・Lancersで案件を探す
 - [ ] noteの記事を進める
 
