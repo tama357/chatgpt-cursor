@@ -286,7 +286,7 @@ def build_chatgpt_input(
         "date": date,
         "timezone": "Asia/Tokyo",
         "cursor_role": "data_and_first_prediction",
-        "chatgpt_role": "final_review_sheet_chatwork",
+        "chatgpt_role": "final_review_revise_sheet",
         "rules": {
             "final_race_count": 3,
             "minimum_close_time": rules.get("minimum_close_time") or "18:00",
@@ -301,7 +301,7 @@ def build_chatgpt_input(
             "ChatGPTは候補全体を再確認し、レース選定・軸・買い目を変更できます。"
             "ファイル名が prediction_input_日付.json で status が ready のときだけ処理してください。"
             "prediction_input_日付.tmp.json は作成途中なので読まないでください。"
-            "最終確認後に prediction_final_日付.json を書き、シート転記とChatwork送信もChatGPT側で行います。"
+            "最終確認後に prediction_final_日付.json を書き、シート転記もChatGPT側で行います。Chatwork送信は行いません。"
         ),
         "candidates": items,
         "cursor_first_prediction": _first_prediction_for_input(items, rules),

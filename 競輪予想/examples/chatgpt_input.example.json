@@ -10,7 +10,7 @@
   "source_updated_at": "2099-01-01T06:00:00+09:00",
   "timezone": "Asia/Tokyo",
   "cursor_role": "data_and_first_prediction",
-  "chatgpt_role": "final_review_sheet_chatwork",
+  "chatgpt_role": "final_review_revise_sheet",
   "rules": {
     "final_race_count": 3,
     "minimum_close_time": "18:00",
@@ -20,7 +20,7 @@
     "targets": ["鉄板", "中穴", "大穴"],
     "confidence": ["A", "B", "C"]
   },
-  "notes": "候補全体とCursor第一予想です。第一予想は最終ではありません。ChatGPTは候補全体を再確認し、レース選定・軸・買い目を変更できます。ファイル名が prediction_input_日付.json で status が ready のときだけ処理してください。prediction_input_日付.tmp.json は作成途中なので読まないでください。最終確認後に prediction_final_日付.json を書き、シート転記とChatwork送信もChatGPT側で行います。",
+  "notes": "候補全体とCursor第一予想です。第一予想は最終ではありません。ChatGPTは候補全体を再確認し、レース選定・軸・買い目を変更できます。ファイル名が prediction_input_日付.json で status が ready のときだけ処理してください。prediction_input_日付.tmp.json は作成途中なので読まないでください。最終確認後に prediction_final_日付.json を書き、シート転記もChatGPT側で行います。Chatwork送信は行いません。",
   "candidates": [
     {
       "extract_rank": 1,
