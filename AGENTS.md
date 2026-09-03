@@ -46,10 +46,20 @@
 
 ChatGPTを司令塔として使い、Cursorはコード編集・開発作業に使う。Geminiも利用する。AIの出力はそのまま納品せず、事実確認と自然な日本語への修正を行う。
 
-## 個人予想（競馬・個人競輪）
+## 個人予想（中央競馬・地方競馬・競艇）
 
 原田さんは Cursor チャットだけで操作する。JSON・コマンドは Cursor が実行。
 
-- **予想**: 「今日の競馬と個人競輪を予想して」→ `python3 個人予想/tools/workflow.py predict-today`
+- **予想**: 「今日の中央競馬と地方競馬と競艇を予想して」→ `python3 個人予想/tools/workflow.py predict-today`
 - **結果**: 「昨日の結果を確認して」→ `python3 個人予想/tools/workflow.py results-yesterday`
 - 詳細: `個人予想/AGENTS.md` / ChatGPT用Excel: `個人予想/CHATGPT_EXCEL.md`
+
+## 提出用競輪（ChatGPTが最終予想）
+
+Cursorはデータ収集・候補抽出・転記・結果記録だけ行う。最終3Rと買い目は作らない。
+
+- **データ**: 「今日の競輪データを集めて」→ `python3 競輪予想/tools/keirin_workflow.py prepare-today`
+- **ChatGPTに渡すファイル**: 完成済みの `競輪予想/data/inbox/prediction_input_YYYY-MM-DD.json` だけ（`.tmp.json` は未完成）
+- **提出**: ChatGPTの `prediction_final_YYYY-MM-DD.json` を渡して「取り込んで」→ `ingest-final`（無いと停止。検証エラーは補正せず停止）
+- **結果**: 「昨日の競輪結果を記載して」→ `python3 競輪予想/tools/keirin_workflow.py results-yesterday`
+- 詳細: `競輪予想/AGENTS.md`

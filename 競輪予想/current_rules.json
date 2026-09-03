@@ -30,7 +30,16 @@
       "other"
     ],
     "low_quality_day_threshold": 70,
-    "selection_count": 3
+    "selection_count": 3,
+    "candidate_extract_min": 5,
+    "candidate_extract_max": 10,
+    "used_for": "candidate_extraction_only"
+  },
+  "role_split": {
+    "cursor": "collect_score_extract_record_verify",
+    "chatgpt": "final_three_races_and_tickets",
+    "cursor_must_not": ["final_three_races", "tickets", "rewrite_chatgpt_final"],
+    "sheet_structure": "do_not_change"
   },
   "confidence": {
     "definition": "作成した買い目への確信度",
@@ -64,5 +73,5 @@
   "summary_spreadsheet_name": "原田さん｜予想集計シート",
   "chatwork_room_id_env": "CHATWORK_ROOM_ID",
   "chatwork_token_env": "CHATWORK_API_TOKEN",
-  "chatwork_send_requires_trigger": "今日の競輪予想を実行して"
+  "chatwork_send_requires_trigger": "ChatGPTの最終予想を取り込んで"
 }

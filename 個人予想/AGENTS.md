@@ -69,10 +69,16 @@ python3 個人予想/tools/workflow.py save-races kyotei /path/to/races.json --d
 
 学習JSONだけ欠けた日は、Excel成功を取り消さず「学習JSON未保存」と報告します。後からその日の日次JSONだけ穴埋めできます。
 
+## 提出用競輪との分離
+
+この `predict-today` は中央競馬・地方競馬・競艇だけ。提出用競輪の予想はしない。
+
+提出用競輪は `競輪予想/` で、Cursor＝データ、ChatGPT＝最終予想に分離している。ChatGPTに渡すのは完成済み `prediction_input_YYYY-MM-DD.json` だけ。操作は `競輪予想/AGENTS.md`。
+
 ## 禁止
 
 - Chatwork・メール・Slack・SNS 送信
-- `競輪予想/` の変更（提出用競輪の `ChatGPT / 競輪学習 / inbox` はそのまま）
+- 提出用競輪の既存シート構造の変更
 - 個人競輪 Excel の使用
 - 中央競馬と地方競馬の成績・学習データの混在
 - 日次ジョブからの `jra_state.json` / `nar_state.json` / `kyotei_state.json` 更新

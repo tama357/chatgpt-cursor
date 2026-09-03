@@ -1,0 +1,200 @@
+{
+  "date": "2099-01-01",
+  "source": "example",
+  "note": "架空データ。Cursorの収集・候補抽出テスト用。実際の予想には使わない。",
+  "races": [
+    {
+      "venue": "テスト競輪場A",
+      "race": 7,
+      "race_number": 7,
+      "deadline": "18:20",
+      "close_time": "18:20",
+      "riders": [
+        {"number": 1, "name": "試験一郎", "winning_style": "逃", "kyuhan": "S1", "score": null, "recent_results": {"first": 5, "second": 2, "third": 1, "out": 4}},
+        {"number": 2, "name": "試験二郎", "winning_style": "両", "kyuhan": "S2", "score": null, "recent_results": {"first": 3, "second": 3, "third": 2, "out": 6}},
+        {"number": 3, "name": "試験三郎", "winning_style": "追", "kyuhan": "A1", "score": null, "recent_results": {"first": 2, "second": 2, "third": 3, "out": 7}},
+        {"number": 4, "name": "試験四郎", "winning_style": "マ", "kyuhan": "A2", "score": null, "recent_results": {"first": 1, "second": 1, "third": 2, "out": 8}}
+      ],
+      "factors": {
+        "axis_reliability": 18,
+        "line_clarity": 13,
+        "ability_gap": 13,
+        "scenario_simplicity": 13,
+        "recent_form": 13,
+        "track_style_fit": 9,
+        "risk_absence": 8
+      },
+      "penalties": [{"code": "other", "points": 2}],
+      "line": {"styles": ["逃", "両", "追", "マ"]},
+      "winning_style": ["逃", "両", "追", "マ"],
+      "B_count": 1,
+      "current_meeting_results": [],
+      "previous_meeting_results": [],
+      "odds": null,
+      "risk_factors": ["競走得点は公式JSONから未取得"],
+      "source": "example"
+    },
+    {
+      "venue": "テスト競輪場B",
+      "race": 10,
+      "race_number": 10,
+      "deadline": "19:30",
+      "close_time": "19:30",
+      "riders": [
+        {"number": 3, "name": "試験花子", "winning_style": "逃", "kyuhan": "S1", "score": null, "recent_results": {"first": 4, "second": 2, "third": 2, "out": 5}},
+        {"number": 4, "name": "試験次郎", "winning_style": "追", "kyuhan": "S2", "score": null, "recent_results": {"first": 2, "second": 4, "third": 1, "out": 6}}
+      ],
+      "factors": {
+        "axis_reliability": 17,
+        "line_clarity": 12,
+        "ability_gap": 12,
+        "scenario_simplicity": 12,
+        "recent_form": 12,
+        "track_style_fit": 8,
+        "risk_absence": 8
+      },
+      "penalties": [{"code": "evenly_matched", "points": 3}],
+      "odds": null,
+      "risk_factors": ["オッズ未公開または未取得"],
+      "source": "example"
+    },
+    {
+      "venue": "テスト競輪場C",
+      "race": 12,
+      "race_number": 12,
+      "deadline": "20:15",
+      "close_time": "20:15",
+      "riders": [
+        {"number": 5, "name": "試験五郎", "winning_style": "逃", "kyuhan": "A1", "score": null, "recent_results": {"first": 3, "second": 2, "third": 2, "out": 6}}
+      ],
+      "factors": {
+        "axis_reliability": 16,
+        "line_clarity": 11,
+        "ability_gap": 11,
+        "scenario_simplicity": 11,
+        "recent_form": 11,
+        "track_style_fit": 8,
+        "risk_absence": 7
+      },
+      "penalties": [{"code": "fragmented_race", "points": 3}],
+      "odds": null,
+      "risk_factors": [],
+      "source": "example"
+    },
+    {
+      "venue": "テスト競輪場D",
+      "race": 11,
+      "race_number": 11,
+      "deadline": "20:00",
+      "close_time": "20:00",
+      "riders": [
+        {"number": 7, "name": "試験七郎", "winning_style": "両", "kyuhan": "A2", "score": null, "recent_results": {"first": 1, "second": 1, "third": 1, "out": 10}}
+      ],
+      "factors": {
+        "axis_reliability": 13,
+        "line_clarity": 10,
+        "ability_gap": 10,
+        "scenario_simplicity": 10,
+        "recent_form": 10,
+        "track_style_fit": 7,
+        "risk_absence": 6
+      },
+      "penalties": [{"code": "no_clear_axis", "points": 5}],
+      "odds": null,
+      "risk_factors": ["逃げる選手がいない"],
+      "source": "example"
+    },
+    {
+      "venue": "テスト競輪場E",
+      "race": 8,
+      "race_number": 8,
+      "deadline": "18:40",
+      "close_time": "18:40",
+      "riders": [
+        {"number": 1, "name": "試験八郎", "winning_style": "逃", "kyuhan": "S2", "score": null, "recent_results": {"first": 2, "second": 2, "third": 2, "out": 6}}
+      ],
+      "factors": {
+        "axis_reliability": 15,
+        "line_clarity": 12,
+        "ability_gap": 11,
+        "scenario_simplicity": 12,
+        "recent_form": 11,
+        "track_style_fit": 8,
+        "risk_absence": 8
+      },
+      "penalties": [],
+      "odds": null,
+      "risk_factors": [],
+      "source": "example"
+    },
+    {
+      "venue": "テスト競輪場F",
+      "race": 9,
+      "race_number": 9,
+      "deadline": "19:00",
+      "close_time": "19:00",
+      "riders": [
+        {"number": 2, "name": "試験九郎", "winning_style": "逃", "kyuhan": "A1", "score": null, "recent_results": {"first": 2, "second": 1, "third": 2, "out": 7}}
+      ],
+      "factors": {
+        "axis_reliability": 14,
+        "line_clarity": 11,
+        "ability_gap": 10,
+        "scenario_simplicity": 11,
+        "recent_form": 10,
+        "track_style_fit": 7,
+        "risk_absence": 7
+      },
+      "penalties": [{"code": "other", "points": 1}],
+      "odds": null,
+      "risk_factors": [],
+      "source": "example"
+    },
+    {
+      "venue": "テスト競輪場G",
+      "race": 6,
+      "race_number": 6,
+      "deadline": "17:50",
+      "close_time": "17:50",
+      "riders": [
+        {"number": 1, "name": "試験早朝", "winning_style": "逃", "kyuhan": "S1", "score": null}
+      ],
+      "factors": {
+        "axis_reliability": 19,
+        "line_clarity": 14,
+        "ability_gap": 14,
+        "scenario_simplicity": 14,
+        "recent_form": 14,
+        "track_style_fit": 9,
+        "risk_absence": 9
+      },
+      "penalties": [],
+      "odds": null,
+      "risk_factors": ["締切18:00前"],
+      "source": "example"
+    },
+    {
+      "venue": "テスト競輪場H",
+      "race": 11,
+      "race_number": 11,
+      "deadline": "19:50",
+      "close_time": "19:50",
+      "riders": [
+        {"number": 6, "name": "試験十郎", "winning_style": "追", "kyuhan": "A3", "score": null}
+      ],
+      "factors": {
+        "axis_reliability": 12,
+        "line_clarity": 9,
+        "ability_gap": 9,
+        "scenario_simplicity": 9,
+        "recent_form": 9,
+        "track_style_fit": 6,
+        "risk_absence": 6
+      },
+      "penalties": [{"code": "evenly_matched", "points": 2}],
+      "odds": null,
+      "risk_factors": [],
+      "source": "example"
+    }
+  ]
+}
