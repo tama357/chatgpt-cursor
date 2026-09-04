@@ -1,5 +1,8 @@
 # Google Drive 同期（個人予想）
 
+**運用停止（2026-09-04）。** `PERSONAL_PREDICT_ENABLED=false`。
+Drive上の既存ファイルは残す。新規同期・更新・削除は再開指示があるまで行わない。
+
 対象は **既存の6つのExcel** です。同名ファイルの新規作成はしません。ID指定で上書きだけします。場所・IDは変更しません。
 
 日次の学習正本は Excel とは別に、各競技の **inbox 日次JSON** です。正規state（`jra_state.json` 等）は日次ジョブから更新しません。
@@ -47,20 +50,22 @@
 - リポジトリ・ログ・PR に JSON を書かない
 - ローカル（PC版 Cursor）に置く場合は `個人予想/.drive/service_account.json`（gitignore済み）
 
-`PERSONAL_PREDICT_ENABLED=false` でも、手動の `verify-drive` と `bootstrap-cloud` ではサービスアカウントを使えます。
+`PERSONAL_PREDICT_ENABLED=false` のため、`verify-drive` と `bootstrap-cloud` も含め実行しない。
 
-## 正しい実行順（最初の1回）
+## 正しい実行順（最初の1回・停止前の記録）
+
+再開指示があるまで 5〜10 は実行しない。Variable は `false` のままにする。
 
 1. サービスアカウントを作成し、ChatGPTフォルダを編集者で共有する
 2. GitHub Secret に `GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON` を設定する
 3. Variable `PERSONAL_PREDICT_ENABLED` を `false` にする
 4. PR を main へマージする（定期実行は無効なので 4:00 / 6:00 は動かない）
-5. Actions で `verify-drive` を手動実行する（書き込みなし）
-6. 必要なら PC版 Cursor で `init-state` を実行する（後からの正規state合成用。日次予想の必須条件ではない。既存があれば上書きせず失敗）
-7. 6ファイルの読み取り成功後、**PC版 Cursor** から現在の Excel を一度だけ初期移行する（許可があるまで実行しない）
-8. Drive上のExcelを確認する
-9. Variable を `true` にする
-10. 4:00・6:00 の定期実行を開始する
+5. Actions で `verify-drive` を手動実行する（書き込みなし）— **停止中。実行しない**
+6. 必要なら PC版 Cursor で `init-state` を実行する — **停止中。実行しない**
+7. 6ファイルの読み取り成功後、**PC版 Cursor** から現在の Excel を一度だけ初期移行する — **停止中。実行しない**
+8. Drive上のExcelを確認する — **停止中。実行しない**
+9. Variable を `true` にする — **しない。false のまま**
+10. 4:00・6:00 の定期実行を開始する — **停止中。開始しない**
 
 初期移行は GitHub Actions では行いません。Actions の checkout には、Windows ローカルの Git管理外 state が無いためです。
 
@@ -75,15 +80,17 @@
 
 ## クラウド実行の動き
 
-| 日本時間 | UTC cron | 内容 |
+**停止中。** 毎日 4:00 / 6:00 の定期実行は無効。`personal-predict.yml` の job は `if: false`。
+
+| 日本時間 | UTC cron（停止前） | 内容 |
 |----------|----------|------|
 | 毎日 4:00 | `0 19 * * *` | 前日の predictions.json を正本に正式結果・Excel集計・results.json |
 | 毎日 6:00 | `0 21 * * *` | 当日の公式出走、最大5レースずつ予想、Excel記入、predictions.json |
 
 開始時に Drive から最新Excelを取得します。正規stateは日次では取得しません。終了時に Excel を保存し、日次JSONを inbox へ保存します。
 
-- 定期実行は `PERSONAL_PREDICT_ENABLED=true` のときだけ動く。未設定または false なら 4:00 / 6:00 は何もしない
-- `verify-drive` と `bootstrap-cloud` はスイッチがオフでも手動実行できる
+- 定期実行は停止。`PERSONAL_PREDICT_ENABLED=false`
+- `verify-drive` と `bootstrap-cloud` も再開指示があるまで実行しない
 - `verify-drive` は1件でも読めなければ失敗終了する
 - Excel の保存が1件でも失敗したら失敗終了する
 - 学習JSON（inbox）の保存失敗ではジョブ全体を失敗扱いにしない。報告に「学習JSON未保存」と書く

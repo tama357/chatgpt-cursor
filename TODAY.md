@@ -4,7 +4,7 @@
 
 ## 🔥 最優先
 
-- [x] 個人予想（中央競馬・地方競馬・競艇）の Cursor / GitHub Actions 運用を停止する（PERSONAL_PREDICT_ENABLED=false。コードと過去データは残す）
+- [x] 個人予想（中央競馬・地方競馬・競艇）の Cursor / GitHub Actions 運用を停止する（PERSONAL_PREDICT_ENABLED=false。コードと過去データは残す。予想・結果・Excel・Drive は実行しない）
 - [x] 提出用競輪のCursor連携運用を終了する（keirin-submit / keirin-ingest 停止。ChatGPT単独運用）
 - [ ] CrowdWorks・Lancersで案件を探す
 - [ ] noteの記事を進める
