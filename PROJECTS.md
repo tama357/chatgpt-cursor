@@ -188,3 +188,4 @@
 - 2026-09-02：PR #9 最終修正。load_canonical_state と predict-today / results-yesterday / report-all で開始日 2026-09-03 を一括必須化。提出用 `競輪予想/` は未変更
 - 2026-09-02：競輪予想に record-predictions / record-results を追加。axis・tickets・close_miss を内部stateへ機械的upsert。Chatwork本文・Sheets・forbidden_outputsは未変更
 - 2026-09-02：競輪予想の内部state.jsonを既存DriveファイルIDへ上書き永続化。6:00/4:00はDrive pull→upsert→同じIDへpush。失敗時はSheets/Chatworkに進まない
+- 2026-09-04：GitHub移行テストPR #19を未マージで閉じ、テストブランチを削除。personal-predictをGitHub側で無効化。mainへの直接push指示を新規ブランチ＋PR・ユーザー確認後マージの方針へ修正し、確認用PRを作成する。競輪Actionsは読み取り確認のみ。
