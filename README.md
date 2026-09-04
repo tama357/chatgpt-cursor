@@ -6,6 +6,7 @@
 
 1. `TODAY.md` — 今日やること、最優先タスク
 2. `競輪予想/README.md` — 提出用競輪（Cursor連携は終了。ChatGPT単独運用）
+2b. `個人予想/` — 中央競馬・地方競馬・競艇（Cursor / GitHub Actions 運用は停止。PERSONAL_PREDICT_ENABLED=false）
 3. `PROJECTS.md` — 進行中・継続中のプロジェクト
 4. `USER_CONTEXT.md` — 人物像、働き方、好み、利用環境
 5. `AGENTS.md` — AIへの最重要ルール

@@ -1,9 +1,10 @@
 # TODAY
 
-最終更新：2026-09-04（提出用競輪のCursor連携を停止）
+最終更新：2026-09-04（個人予想の中央競馬・地方競馬・競艇を停止）
 
 ## 🔥 最優先
 
+- [x] 個人予想（中央競馬・地方競馬・競艇）の Cursor / GitHub Actions 運用を停止する（PERSONAL_PREDICT_ENABLED=false。コードと過去データは残す）
 - [x] 提出用競輪のCursor連携運用を終了する（keirin-submit / keirin-ingest 停止。ChatGPT単独運用）
 - [ ] CrowdWorks・Lancersで案件を探す
 - [ ] noteの記事を進める

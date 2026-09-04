@@ -1,0 +1,24 @@
+---
+description: 中央競馬・地方競馬・競艇の個人予想運用は停止。再開指示があるまで実行しない
+alwaysApply: true
+---
+
+# 個人予想は停止中
+
+`PERSONAL_PREDICT_ENABLED=false`。
+
+中央競馬・地方競馬・競艇について、次を実行しない。
+
+- 予想作成（predict-today / cloud-predict / predict-jra / predict-nar / predict-kyotei）
+- 結果取得（results-yesterday / cloud-results）
+- Excel更新
+- Google Drive同期
+- inbox JSON作成
+- state合成（ingest-inbox）
+- 学習・成績レポート生成
+- GitHub Actions の `personal-predict` 手動実行
+
+コード・Excel・JSON・state・Drive上の既存ファイルは削除しない。
+競輪関連には触れない。Chatwork・メール・Slack へは送らない。
+
+原田さんが明示的に再開を指示するまで、この停止を維持する。

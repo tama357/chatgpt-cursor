@@ -39,24 +39,26 @@
 - このリポジトリでファイルを作る・直したら、作業の最後に必ず git add → commit → push origin main する。
 - 「上げてよいか」を毎回聞かない。このリポジトリでは上げてよい。
 - 作業後、必要に応じて TODAY.md の進行中・完了も更新する。
-- 作業要点を PROJECTS.md 末尾の「作業ログ」へ日付付きで短く追記してから上げる。
+- 作業要点を PROJECTS.md 末尾の「作業ログ」へ日付付きで追記してから上げる。
 - 秘密情報、APIキー、パスワード、口座番号、患者・利用者を特定できる情報は絶対にコミットしない。
 
 ## AI利用方針
 
 ChatGPTを司令塔として使い、Cursorはコード編集・開発作業に使う。Geminiも利用する。AIの出力はそのまま納品せず、事実確認と自然な日本語への修正を行う。
 
-## 個人予想（中央競馬・地方競馬・競艇）
+## 個人予想（中央競馬・地方競馬・競艇）は停止
 
-原田さんは Cursor チャットだけで操作する。JSON・コマンドは Cursor が実行。
+`PERSONAL_PREDICT_ENABLED=false`。2026-09-04 に Cursor / GitHub Actions 運用を停止した。
 
-- **予想**: 「今日の中央競馬と地方競馬と競艇を予想して」→ `python3 個人予想/tools/workflow.py predict-today`
-- **結果**: 「昨日の結果を確認して」→ `python3 個人予想/tools/workflow.py results-yesterday`
-- 詳細: `個人予想/AGENTS.md` / ChatGPT用Excel: `個人予想/CHATGPT_EXCEL.md`
+Cursorは中央競馬・地方競馬・競艇の予想作成・結果取得・Excel更新・Google Drive同期・inbox JSON作成・state合成・学習レポート生成を行わない。
+`personal-predict.yml` の定期実行（毎日4:00 results-yesterday / 6:00 predict-today）と手動実行もしない。
+コード・Excel・JSON・state・Drive上の既存ファイルは残す。明示的な再開指示があるまで実行しない。
+
+詳細: `個人予想/AGENTS.md`
 
 ## 提出用競輪（Cursor連携は終了）
 
 競輪予想のCursor連携運用は終了した。今後の競輪予想はChatGPTが単独で行う。
 
 Cursorは競輪の収集・第一予想・ingest-final・結果記載・シート書き込み・Chatwork・Artifact・Drive同期・GitHub Actions手動実行・テストを行わない。
-`keirin-submit` と `keirin-ingest` は停止。`personal-predict.yml` には触れない。
+`keirin-submit` と `keirin-ingest` は停止。競輪関連ファイルは変更しない。

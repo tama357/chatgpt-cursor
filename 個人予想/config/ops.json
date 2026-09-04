@@ -1,0 +1,15 @@
+{
+  "PERSONAL_PREDICT_ENABLED": false,
+  "stopped_on": "2026-09-04",
+  "sports_stopped": ["jra", "nar", "kyotei"],
+  "stopped_jobs": [
+    "predict-today",
+    "results-yesterday",
+    "excel-update",
+    "google-drive-sync",
+    "inbox-json",
+    "state-ingest",
+    "learning-report"
+  ],
+  "note": "中央競馬・地方競馬・競艇のCursor／GitHub Actions運用を停止。コード・Excel・JSON・state・Drive既存ファイルは残す。競輪は対象外。明示的な再開指示があるまで実行しない。"
+}
