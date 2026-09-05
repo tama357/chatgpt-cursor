@@ -1,10 +1,12 @@
 # TODAY
 
-最終更新：2026-09-04（個人予想の中央競馬・地方競馬・競艇を停止）
+最終更新：2026-09-05（Cursor運用をChatGPT / Codexへ引き継ぎ。personal-predict の cron 削除は権限不足で未反映）
 
 ## 🔥 最優先
 
 - [x] 個人予想（中央競馬・地方競馬・競艇）の Cursor / GitHub Actions 運用を停止する（PERSONAL_PREDICT_ENABLED=false。コードと過去データは残す。予想・結果・Excel・Drive は実行しない）
+- [x] Cursor担当作業の引き継ぎ資料を作成する（2026-09-05）
+- [ ] Codex：`personal-predict.yml` から schedule / cron を削除する（Cursor側は workflow 権限不足で未反映）
 - [x] 提出用競輪のCursor連携運用を終了する（keirin-submit / keirin-ingest 停止。ChatGPT単独運用）
 - [ ] CrowdWorks・Lancersで案件を探す
 - [ ] noteの記事を進める
