@@ -5,6 +5,7 @@
 中央競馬・地方競馬・競艇の Cursor / GitHub Actions 運用は終了した。
 Cursorは予想作成・結果取得・Excel更新・Google Drive同期・inbox JSON作成・state合成・学習レポート生成を行わない。
 `personal-predict.yml` は無効。毎日 4:00 の results-yesterday と 6:00 の predict-today は動かない。手動実行もしない。
+2026-09-05：schedule / cron 削除を試みたが、GitHubトークンに workflow 権限がなく未反映。Codexが `.github/workflows/personal-predict.yml` から `on.schedule` を削除すること。
 コード・Excel・JSON・state・Drive上の既存ファイルは残す。競輪には触れない。Chatwork・メール・Slack へは送らない。
 原田さんが明示的に再開を指示するまで、この停止を維持する。
 
@@ -52,7 +53,7 @@ python3 個人予想/tools/workflow.py predict-today
 
 ### 結果確認（results-yesterday）
 
-1. 前日の `predictions.json` を予想の正本として結果を紐付ける
+1. 前日の `predictions.json` を予想の正本として結果を紐込ける
 2. 取れたレース分だけ Excel 集計へ反映する（部分取得可）
 3. `YYYY-MM-DD.results.json` を保存し、再読する
 4. 原田さんへチャット報告
