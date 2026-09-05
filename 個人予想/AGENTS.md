@@ -53,7 +53,7 @@ python3 個人予想/tools/workflow.py predict-today
 
 ### 結果確認（results-yesterday）
 
-1. 前日の `predictions.json` を予想の正本として結果を紐込ける
+1. 前日の `predictions.json` を予想の正本として結果を紐付ける
 2. 取れたレース分だけ Excel 集計へ反映する（部分取得可）
 3. `YYYY-MM-DD.results.json` を保存し、再読する
 4. 原田さんへチャット報告
