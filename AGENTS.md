@@ -53,6 +53,7 @@ ChatGPTを中心に使う。文章・調査・資料作成・外部サービス�
 
 Cursorは中央競馬・地方競馬・競艇の予想作成・結果取得・Excel更新・Google Drive同期・inbox JSON作成・state合成・学習レポート生成を行わない。
 `personal-predict.yml` の定期実行（毎日4:00 results-yesterday / 6:00 predict-today）と手動実行もしない。
+2026-09-05：schedule / cron 削除を試みたが、GitHubトークンに workflow 権限がなく未反映。Codexが `.github/workflows/personal-predict.yml` から `on.schedule` を削除すること。
 コード・Excel・JSON・state・Drive上の既存ファイルは残す。明示的な再開指示があるまで実行しない。
 
 詳細: `個人予想/AGENTS.md`
