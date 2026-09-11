@@ -27,7 +27,7 @@
 | `04_chatgpt-brief.md` | ChatGPTに貼る説明文 |
 | `05_reusable-prompt.md` | 新しい台本用の再利用プロンプト |
 | `reports/` | 動画ごとの詳しい分析 |
-| `csv/` | カット割り表 |
+| `csv/` | カット割り表。結合ファイル `cuts-all.csv` は動画ごとのCSVからUTF-8で再作成。Excelで文字化けする場合は動画ごとのCSVを開く |
 | `screenshots/key/` | 測定用の代表画面。制作素材ではない |
 
 ## 事実 / 推定 / 未確認
