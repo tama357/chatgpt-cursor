@@ -26,6 +26,7 @@
 | `09_sample-receipt-fix.md` | 甘恋レシート見本の直し方 |
 | `10_motion-and-voice.md` | **いらすとや静止画の動かし方6つ、動きの数値、声の違い** |
 | `11_story-structures.md` | **10本の話の構成と展開（フック→日常→悪化→ねじれ）** |
+| `11_story-structures.md` | **10本の話の構成と展開（フック→日常→悪化→ねじれ）** |
 | `01_video-list.md` | 分析した5本の一覧 |
 | `02_original-vs-existing-docs.md` | 原作と既存資料の違い |
 | `03_channel-production-guide.md` | チャンネル共通の作り方 |
