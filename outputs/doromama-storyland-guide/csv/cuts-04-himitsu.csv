@@ -1,8 +1,20 @@
 video_id,cut_id,start_sec,end_sec,duration_sec,visual,subtitle,audio,motion,effect,confidence,time_error_sec
-04_himitsu,A,0.00,0.50,0.50,麻辣湯店。鍋を持つ女子,麻辣湯食べに行くと,ナレ+BGM全尺。詳細は06,静止,なし,confirmed_visual,0.20
-04_himitsu,B,0.50,0.90,0.40,店内。2人の後ろ姿,同,ナレ+BGM全尺。詳細は06,ハードカット,なし,confirmed_visual,0.20
-04_himitsu,C,0.90,1.80,0.90,店員と客。会計,同,ナレ+BGM全尺。詳細は06,ハードカット,なし,confirmed_visual,0.20
-04_himitsu,D,1.80,2.80,1.00,店員正面,5シークレット / になります,ナレ+BGM全尺。詳細は06,未計測,なし（黄字幕）,confirmed_visual,0.20
-04_himitsu,E,2.80,4.50,1.70,客が耳打ち。店員が赤いランプの端末,前のお客さんが / 耳打ちで,ナレ+BGM全尺。詳細は06,未計測,なし,confirmed_visual,0.30
-04_himitsu,F,4.50,8.00,3.50,店員アップ。端末。怒りマーク,ピッ,ナレ+BGM全尺。詳細は06,顔へ寄り,顔が暗い,confirmed_visual,0.50
-04_himitsu,G,50.00,58.96,8.96,夜道。スマホを見て泣く,そんなぁ…,ナレ+BGM全尺。詳細は06,未計測,なし,sampled,1.00
+04_himitsu,A,0.00,0.50,0.50,麻辣湯店。鍋を持つ女子,麻辣湯食べに行くと,ナレ+BGM全尺,静止,なし,confirmed_visual,0.20
+04_himitsu,B,0.50,0.90,0.40,店内。2人の後ろ姿,同,ナレ+BGM全尺,ハードカット,なし,confirmed_visual,0.20
+04_himitsu,C,0.90,1.80,0.90,店員と客。会計,同,ナレ+BGM全尺,ハードカット,なし,confirmed_visual,0.20
+04_himitsu,D,1.80,2.80,1.00,店員正面,5シークレット / になります,ナレ+BGM全尺,未計測,黄字幕,confirmed_visual,0.20
+04_himitsu,E,2.80,4.50,1.70,客が耳打ち。店員が赤いランプの端末,前のお客さんが / 耳打ちで,ナレ+BGM全尺,未計測,なし,confirmed_visual,0.30
+04_himitsu,F,4.50,8.00,3.50,店員アップ。端末。怒りマーク,ピッツ,ナレ+BGM全尺,顔へ寄り,顔が暗い。SE未確認,confirmed_visual,0.40
+04_himitsu,G,8.00,12.00,4.00,黄背景。電球。鍋を持つ女子,秘密！？,ナレ+BGM全尺,静止,電球マーク,confirmed_visual,0.40
+04_himitsu,H,12.00,15.20,3.20,店員が端末,ありがとうございます！,ナレ+BGM全尺,静止,黄字幕,confirmed_visual,0.40
+04_himitsu,I,15.20,18.20,3.00,耳打ち。下に白の注記,「ここのバイト、今日で飛びます」,ナレ+BGM全尺,静止,黄＋白の2段,confirmed_visual,0.40
+04_himitsu,J,18.20,22.20,4.00,女子の驚き顔,店員さんの秘密 / 返ってきたんだけど！？,ナレ+BGM全尺,顔アップ,集中線,confirmed_visual,0.40
+04_himitsu,K,22.20,25.20,3.00,破れた服の男2人,正直者ほど / 秘密がなくて貧乏で,ナレ+BGM全尺,全身,吹き出し,confirmed_visual,0.40
+04_himitsu,L,25.20,32.20,7.00,スマホのフリマ。茶バッグ,私が欲しかった / バッグも,ナレ+BGM全尺,小物アップ,キラは映像,confirmed_visual,0.50
+04_himitsu,M,32.20,36.20,4.00,購入完了画面,ピロンッ,ナレ+BGM全尺,スマホアップ,黄字幕。SE未確認,confirmed_visual,0.40
+04_himitsu,N,36.20,40.20,4.00,海辺の別荘と案内人,夢だった海辺の / 別荘の内見に行き,ナレ+BGM全尺,広角,なし,confirmed_visual,0.40
+04_himitsu,O,40.20,48.20,8.00,玄関前の自信顔,あの秘密なら / 余裕でしょ！,ナレ+BGM全尺,バスト,黄色い線,confirmed_visual,0.50
+04_himitsu,P,48.20,55.20,7.00,夜の青ざめた顔,え！？…,ナレ+BGM全尺,顔アップ,汗,confirmed_visual,0.50
+04_himitsu,Q,55.20,57.20,2.00,暗い部屋のマスクの人物,裏で取引されて / いるようで…,ナレ+BGM全尺,広角,なし,confirmed_visual,0.40
+04_himitsu,R,57.20,57.90,0.70,敬礼する警察官,署まで届くこと / になっています,ナレ+BGM全尺,全身,なし,confirmed_visual,0.30
+04_himitsu,S,57.90,58.96,1.06,夜道。スマホを見て泣く,そんなぁ…,ナレ+BGM全尺,バスト,なし,confirmed_visual,0.20

@@ -21,6 +21,7 @@
 
 | ファイル | 内容 |
 |---|---|
+| `07_chatgpt-latest-3.md` | **最新3本をChatGPTに貼る再現文** |
 | `01_video-list.md` | 分析した5本の一覧 |
 | `02_original-vs-existing-docs.md` | 原作と既存資料の違い |
 | `03_channel-production-guide.md` | チャンネル共通の作り方 |
