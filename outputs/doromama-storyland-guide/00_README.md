@@ -22,6 +22,8 @@
 | ファイル | 内容 |
 |---|---|
 | `07_chatgpt-latest-3.md` | **最新3本をChatGPTに貼る再現文** |
+| `08_themes-and-plots.md` | **テーマ・展開の具体例。台本の前に貼る文** |
+| `09_sample-receipt-fix.md` | 甘恋レシート見本の直し方 |
 | `01_video-list.md` | 分析した5本の一覧 |
 | `02_original-vs-existing-docs.md` | 原作と既存資料の違い |
 | `03_channel-production-guide.md` | チャンネル共通の作り方 |
