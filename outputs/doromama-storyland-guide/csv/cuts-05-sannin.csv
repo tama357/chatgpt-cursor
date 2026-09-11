@@ -1,0 +1,8 @@
+video_id,cut_id,start_sec,end_sec,duration_sec,visual,subtitle,audio,motion,effect,confidence,time_error_sec
+05_sannin,A,0.00,0.50,0.50,バー。3人。男が歩く,彼氏とバーに行ったら偶然,未確認,歩きのポーズ,なし,confirmed_visual,0.20
+05_sannin,B,0.50,0.90,0.40,男とピンクの女が並ぶ,同,未確認,ハードカット,なし,confirmed_visual,0.20
+05_sannin,C,0.90,1.80,0.90,男と黒い服の女が対面。驚き,同,未確認,顔アップへ切替,なし,confirmed_visual,0.20
+05_sannin,D,1.80,2.50,0.70,白Tの男（トモカズ）。左右は切れ,隣に私の浮気相手の / トモカズがいて,未確認,ズームイン（推定）,集中線,confirmed_visual,0.20
+05_sannin,E,2.50,4.50,2.00,トモカズへさらに寄る,同,未確認,ズームイン（推定）,集中線が強い,confirmed_visual,0.30
+05_sannin,F,4.50,8.00,3.50,彼氏がカウンターで横顔,そのこと考えすぎて,未確認,ハードカット,なし,confirmed_visual,0.50
+05_sannin,G,50.00,54.52,4.52,2人の男がドアへ。手前の女が手を伸ばす,母さんと三人で暮らそう（緑）,未確認,未計測,赤いランプ,sampled,0.50

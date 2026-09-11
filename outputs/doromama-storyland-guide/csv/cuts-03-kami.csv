@@ -1,0 +1,8 @@
+video_id,cut_id,start_sec,end_sec,duration_sec,visual,subtitle,audio,motion,effect,confidence,time_error_sec
+03_kami,A,0.00,0.50,0.50,住宅の外観,私は毎日 / 髪の長さが変わる,未確認,静止,なし,confirmed_visual,0.20
+03_kami,B,0.50,0.90,0.40,玄関。肩までの髪の女子,同,未確認,寄り（別絵）,なし,confirmed_visual,0.20
+03_kami,C,0.90,1.80,0.90,同じ玄関。短い髪,同,未確認,髪型差し替えのハードカット,なし,confirmed_visual,0.20
+03_kami,D,1.80,2.80,1.00,校舎前。坊主で泣く,昨日は坊主で,未確認,未計測,なし,confirmed_visual,0.20
+03_kami,E,2.80,4.50,1.70,教室。髪に埋もれる,今日は髪に埋もれて / モンジャラみたいに / なってるし,未確認,未計測,集中線,confirmed_visual,0.30
+03_kami,F,4.50,8.00,3.50,赤ん坊と助産師の顔,産まれた時は毛の塊で / 出てきたから助産師さん / もパニック,未確認,顔アップ,なし,confirmed_visual,0.50
+03_kami,G,50.00,57.90,7.90,再び家の外観,ウキウキで / 楽しみにしてた / 撮影当日,未確認,未計測,なし,sampled,1.00

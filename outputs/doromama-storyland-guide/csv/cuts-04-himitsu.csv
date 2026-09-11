@@ -1,0 +1,8 @@
+video_id,cut_id,start_sec,end_sec,duration_sec,visual,subtitle,audio,motion,effect,confidence,time_error_sec
+04_himitsu,A,0.00,0.50,0.50,麻辣湯店。鍋を持つ女子,麻辣湯食べに行くと,未確認,静止,なし,confirmed_visual,0.20
+04_himitsu,B,0.50,0.90,0.40,店内。2人の後ろ姿,同,未確認,ハードカット,なし,confirmed_visual,0.20
+04_himitsu,C,0.90,1.80,0.90,店員と客。会計,同,未確認,ハードカット,なし,confirmed_visual,0.20
+04_himitsu,D,1.80,2.80,1.00,店員正面,5シークレット / になります,未確認,未計測,なし（黄字幕）,confirmed_visual,0.20
+04_himitsu,E,2.80,4.50,1.70,客が耳打ち。店員が赤いランプの端末,前のお客さんが / 耳打ちで,未確認,未計測,なし,confirmed_visual,0.30
+04_himitsu,F,4.50,8.00,3.50,店員アップ。端末。怒りマーク,ピッ,未確認,顔へ寄り,顔が暗い,confirmed_visual,0.50
+04_himitsu,G,50.00,58.96,8.96,夜道。スマホを見て泣く,そんなぁ…,未確認,未計測,なし,sampled,1.00

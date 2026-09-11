@@ -199,3 +199,4 @@
 - 2026-09-02：競輪予想に record-predictions / record-results を追加。axis・tickets・close_miss を内部stateへ機械的upsert。Chatwork本文・Sheets・forbidden_outputsは未変更
 - 2026-09-02：競輪予想の内部state.jsonを既存DriveファイルIDへ上書き永続化。6:00/4:00はDrive pull→upsert→同じIDへpush。失敗時はSheets/Chatworkに進まない
 - 2026-09-04：GitHub移行テストPR #19を未マージで閉じ、テストブランチを削除。personal-predictをGitHub側で無効化。mainへの直接push指示を新規ブランチ＋PR・ユーザー確認後マージの方針へ修正し、確認用PRを作成する。競輪Actionsは読み取り確認のみ。
+- 2026-09-11：日刊泥ママストーリーランドのShorts5本を分析し、制作ガイドを `outputs/doromama-storyland-guide/` に作成（動画制作・送信なし）
