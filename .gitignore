@@ -48,3 +48,8 @@ outputs/doromama-storyland-guide/_tools/package-lock.json
 .DS_Store
 Thumbs.db
 *.swp
+
+# CLI委任の一時原稿・ログ・端末固有設定
+.cli-delegation/
+skills/limited-cli-delegation/**/*.local.json
+skills/limited-cli-delegation/**/*.local.txt

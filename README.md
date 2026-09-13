@@ -2,6 +2,8 @@
 
 このリポジトリは、原田真羽さんについてChatGPTが把握している作業情報をCursorへ引き継ぐための資料です。
 
+Cursor / Gemini CLIへの限定的な自動委任とWindows共通スキルの設定は [CLI委任の登録・検証記録](docs/CLI_DELEGATION_SETUP.md) を参照してください。
+
 ## 読む順番
 
 1. `TODAY.md` — 今日やること、最優先タスク
